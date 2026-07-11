@@ -229,7 +229,7 @@ export default function DocsChat() {
   const showWelcome = messages.length === 0;
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-[#e5e5e5]">
+    <div className="flex flex-col h-screen overflow-hidden bg-[#0a0a0a] text-[#e5e5e5]">
       {/* Header */}
       <header className="flex items-center gap-3 px-6 py-4 border-b border-[#1a1a1a]">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#1a1a1a] bg-[#0f0f0f]">
