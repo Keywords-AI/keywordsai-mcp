@@ -229,11 +229,11 @@ export default function DocsChat() {
   const showWelcome = messages.length === 0;
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-[#e5e5e5]">
+    <div className="flex flex-col h-screen overflow-hidden bg-[var(--bg)] text-[var(--text)]">
       {/* Header */}
-      <header className="flex items-center gap-3 px-6 py-4 border-b border-[#1a1a1a]">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#1a1a1a] bg-[#0f0f0f]">
-          <span className="text-sm text-[#6483F0] whitespace-nowrap">See traces</span>
+      <header className="flex items-center gap-3 px-6 py-4 border-b border-[var(--border)]">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-sm">
+          <span className="text-sm text-[var(--accent)] whitespace-nowrap">See traces</span>
           <input
             type="password"
             value={apiKey}
@@ -241,10 +241,10 @@ export default function DocsChat() {
             placeholder="Respan API key"
             autoComplete="off"
             spellCheck={false}
-            className="px-2 py-0.5 bg-transparent text-[#e5e5e5] text-sm font-mono w-64 outline-none placeholder:text-[#555]"
+            className="px-2 py-0.5 bg-transparent text-[var(--text)] text-sm font-mono w-64 outline-none placeholder:text-[var(--text-faint)]"
           />
         </div>
-        <span className="text-xs text-[#555]">
+        <span className="text-xs text-[var(--text-faint)]">
           Your key is never stored, cached, or logged.
         </span>
       </header>
@@ -253,8 +253,8 @@ export default function DocsChat() {
       <main className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 overflow-hidden">
         {showWelcome && (
           <div className="text-center pt-20 pb-10">
-            <h1 className="text-2xl font-semibold text-white mb-2">Ask Respan docs</h1>
-            <p className="text-[#666] text-base">
+            <h1 className="text-2xl font-semibold text-[var(--text-strong)] mb-2">Ask Respan docs</h1>
+            <p className="text-[var(--text-muted)] text-base">
               Ask anything about Respan. Get answers with sources from the docs.
             </p>
             <div className="flex flex-wrap gap-2 justify-center mt-6">
@@ -262,7 +262,7 @@ export default function DocsChat() {
                 <button
                   key={s}
                   onClick={() => ask(s)}
-                  className="px-4 py-2.5 rounded-lg border border-[#1a1a1a] bg-[#0f0f0f] text-[#aaa] text-base cursor-pointer transition-all hover:border-[#6483F0] hover:text-white hover:bg-[#111]"
+                  className="px-4 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] text-base cursor-pointer shadow-sm transition-all duration-200 hover:border-[var(--accent)] hover:text-[var(--text-strong)] hover:bg-[var(--surface-hover)] hover:shadow-md hover:-translate-y-px"
                 >
                   {s}
                 </button>
@@ -275,14 +275,14 @@ export default function DocsChat() {
         <div className="flex-1 overflow-y-auto flex flex-col gap-5 py-4">
           {messages.map((msg, i) => (
             <div key={i} className={`flex flex-col gap-1.5 ${msg.role === 'user' ? 'items-end' : ''}`}>
-              <span className="text-xs font-semibold tracking-wide text-[#555]">
+              <span className="text-xs font-semibold tracking-wide text-[var(--text-faint)]">
                 {msg.role === 'user' ? 'You' : 'Respan'}
               </span>
               <div
                 className={`px-5 py-4 rounded-xl text-base leading-relaxed ${
                   msg.role === 'user'
-                    ? 'bg-[#1a1a2e] border border-[#2a2a4e] w-fit max-w-[85%]'
-                    : 'bg-[#111] border border-[#1a1a1a]'
+                    ? 'bg-[var(--user-bubble)] border border-[var(--border-accent)] w-fit max-w-[85%]'
+                    : 'bg-[var(--surface-hover)] border border-[var(--border)]'
                 }`}
               >
                 {msg.role === 'assistant' && (
@@ -304,7 +304,7 @@ export default function DocsChat() {
         </div>
 
         {/* Input */}
-        <div className="py-4 border-t border-[#1a1a1a]">
+        <div className="py-4 border-t border-[var(--border)]">
           <div className="flex gap-2">
             <input
               ref={inputRef}
@@ -315,14 +315,14 @@ export default function DocsChat() {
               placeholder="Ask about Respan..."
               autoComplete="off"
               autoFocus
-              className="flex-1 px-4 py-3 rounded-xl border border-[#1a1a1a] bg-[#0f0f0f] text-[#e5e5e5] text-base outline-none focus:border-[#6483F0] placeholder:text-[#444]"
+              className="flex-1 px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] text-base outline-none shadow-sm transition-shadow focus:border-[var(--accent)] focus:shadow-md focus:ring-2 focus:ring-[#6483F0]/20 placeholder:text-[var(--text-faint)]"
             />
             <button
               onClick={handleSubmit}
-              className={`px-5 py-3 rounded-xl text-base font-medium text-white transition-colors cursor-pointer ${
+              className={`px-5 py-3 rounded-xl text-base font-medium text-white shadow-sm transition-all cursor-pointer hover:shadow-md active:scale-[0.98] ${
                 streaming
                   ? 'bg-red-500 hover:bg-red-600'
-                  : 'bg-[#6483F0] hover:bg-[#5070e0]'
+                  : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)]'
               }`}
             >
               {streaming ? 'Stop' : 'Send'}

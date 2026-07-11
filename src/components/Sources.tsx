@@ -17,7 +17,7 @@ export default function Sources({ pages }: Props) {
           href={p.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm px-3 py-1.5 rounded-md bg-[#0f0f1a] border border-[#1a1a2e] text-[#6483F0] no-underline transition-all hover:bg-[#1a1a2e] hover:border-[#6483F0]"
+          className="text-sm px-3 py-1.5 rounded-md bg-[var(--surface)] border border-[var(--border-accent)] text-[var(--accent)] no-underline transition-all hover:bg-[var(--user-bubble)] hover:border-[var(--accent)]"
         >
           {p.title}
         </a>

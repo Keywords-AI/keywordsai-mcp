@@ -1,16 +1,57 @@
 @import "tailwindcss";
 
+/*
+ * Theme tokens. Light is the default; dark activates via the user's OS/browser
+ * `prefers-color-scheme`. Dark values are the original hard-coded palette, so
+ * dark mode is unchanged — this only adds a light theme.
+ */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f7f7f8;
+  --surface-hover: #efeff1;
+  --border: #d4d4d8;
+  --border-accent: #b6c2f7;
+  --text: #27272a;
+  --text-strong: #09090b;
+  --text-muted: #52525b;
+  --text-faint: #8e8e93;
+  --user-bubble: #e8ecfd;
+  --code-bg: #ececef;
+  --code-text: #1f2328;
+  --accent: #6483F0;
+  --accent-hover: #5070e0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0a0a0a;
+    --surface: #0f0f0f;
+    --surface-hover: #111111;
+    --border: #1a1a1a;
+    --border-accent: #2a2a4e;
+    --text: #e5e5e5;
+    --text-strong: #ffffff;
+    --text-muted: #aaaaaa;
+    --text-faint: #555555;
+    --user-bubble: #1a1a2e;
+    --code-bg: #1a1a1a;
+    --code-text: #d4d4d4;
+  }
+}
+
 /* Prose styling for markdown content */
 .prose-custom p { margin: 0 0 8px; }
 .prose-custom p:last-child { margin-bottom: 0; }
 
 /* Inline code */
 .prose-custom code {
-  background: #1a1a1a;
+  background: var(--code-bg);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.84em;
-  color: #e0e0e0;
+  color: var(--code-text);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
@@ -29,16 +70,16 @@
   padding: 0;
   border-radius: 0;
   font-size: 0.88em;
-  color: #d4d4d4;
+  color: var(--code-text);
 }
 
 /* Links */
-.prose-custom a { color: #6483F0; text-decoration: none; }
+.prose-custom a { color: var(--accent); text-decoration: none; }
 .prose-custom a:hover { text-decoration: underline; }
 
 /* Headings */
 .prose-custom h1, .prose-custom h2, .prose-custom h3, .prose-custom h4 {
-  color: #fff;
+  color: var(--text-strong);
   margin: 14px 0 6px;
   font-weight: 600;
 }
@@ -53,15 +94,15 @@
 .prose-custom li > p { margin: 0; }
 
 /* Bold / emphasis */
-.prose-custom strong { color: #fff; }
-.prose-custom em { color: #bbb; }
+.prose-custom strong { color: var(--text-strong); }
+.prose-custom em { color: var(--text-muted); }
 
 /* Blockquote */
 .prose-custom blockquote {
-  border-left: 3px solid #2a2a4e;
+  border-left: 3px solid var(--border-accent);
   padding-left: 12px;
   margin: 8px 0;
-  color: #999;
+  color: var(--text-muted);
 }
 
 /* Table */
@@ -74,19 +115,19 @@
 .prose-custom th {
   text-align: left;
   padding: 6px 10px;
-  border-bottom: 1px solid #2a2a2a;
-  color: #ccc;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
   font-weight: 600;
 }
 .prose-custom td {
   padding: 6px 10px;
-  border-bottom: 1px solid #151515;
-  color: #aaa;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
 }
 
 /* Horizontal rule */
 .prose-custom hr {
   border: none;
-  border-top: 1px solid #1a1a1a;
+  border-top: 1px solid var(--border);
   margin: 12px 0;
 }
