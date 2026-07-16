@@ -4,7 +4,6 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 const AUTH_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const CLIENT_REG_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 function getKey(): Buffer {
   const secret = process.env.OAUTH_SECRET;
@@ -82,11 +81,16 @@ export function createClientRegistration(
   clientId: string,
   redirectUris: string[],
 ): string {
+  // Client registrations do not expire. A client_id is a public OAuth identifier
+  // (RFC 7591), not a secret, and MCP clients cache it indefinitely without ever
+  // re-registering on their own — so a TTL only makes cached client_ids silently
+  // break ("Invalid or expired client_id") a while after setup, with no client-side
+  // way to recover. The registration blob is still authenticated via OAUTH_SECRET,
+  // and redirect_uri is re-validated at authorize/token time.
   return encrypt({
     type: 'client_reg',
     clientId,
     redirectUris,
-    exp: Date.now() + CLIENT_REG_TTL_MS,
   });
 }
 
@@ -98,7 +102,9 @@ export function verifyClientRegistration(token: string): {
   if (payload.type !== 'client_reg') {
     throw new Error('Invalid client registration');
   }
-  if (typeof payload.exp !== 'number' || Date.now() > payload.exp) {
+  // Legacy registrations issued before the TTL was removed still carry `exp`;
+  // keep honoring it. New registrations omit `exp` and never expire.
+  if (typeof payload.exp === 'number' && Date.now() > payload.exp) {
     throw new Error('Client registration expired');
   }
   return {
