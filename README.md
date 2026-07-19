@@ -136,6 +136,28 @@ Share this config with your team:
 | `list_prompt_versions` | List all versions of a prompt |
 | `get_prompt_version_detail` | Get specific version details |
 
+### Workflows
+
+| Tool | Description |
+|------|-------------|
+| `list_workflows` | List automations, monitors, scheduled exports, and evaluator pipelines |
+| `filter_workflows` | Filter workflows by type or other fields |
+| `get_workflow` | Retrieve a workflow and its task definitions |
+| `create_automation_workflow` | Create an event-driven automation; adds the required dashboard sampling gate |
+| `create_monitor_workflow` | Create a monitor from aggregation/condition and delivery tasks |
+| `create_export_workflow` | Create a scheduled export from cron and export-specific options |
+| `create_workflow` | Advanced low-level workflow creation escape hatch |
+| `update_workflow` | Update an editable workflow draft |
+| `delete_workflow` | Delete a workflow family and all versions |
+| `list_workflow_versions` | List versions in a workflow family |
+| `get_workflow_version` | Retrieve a specific workflow version |
+| `commit_workflow` | Commit the current draft |
+| `deploy_workflow` | Deploy a committed workflow version |
+| `undeploy_workflow` | Stop a deployed workflow |
+| `validate_workflow` | Validate workflow tasks against sample data |
+
+The backend route is shared, but the MCP creation functions are intentionally separate. Automations are event-driven task pipelines and receive the dashboard-compatible `auto-sampling` gate; monitors accept aggregation, condition, and delivery tasks and require a notification or webhook; exports accept a UTC five-field cron plus export-specific filters, fields, inline-result behavior, and sampling.
+
 ---
 
 ## Filter Syntax
