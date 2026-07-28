@@ -213,8 +213,52 @@ For custom API endpoints, set the `RESPAN_API_BASE_URL` environment variable:
 
 ```bash
 npm run build        # Compile TypeScript
-npm run watch        # Watch mode
 npm run stdio        # Build and run in stdio mode
+```
+
+### Local OAuth broker
+
+The repository includes a Vercel-independent HTTP harness for the public OAuth
+and MCP routes. It uses the existing local backend and Redis services; it does
+not start, restart, or clear either service.
+
+Create a gitignored `.env.local`:
+
+```dotenv
+OAUTH_SECRET=<locally-generated-random-secret-of-at-least-32-characters>
+OAUTH_SESSION_STORE=redis
+REDIS_URL=redis://127.0.0.1:6379/15
+MCP_REDIS_KEY_PREFIX=respan-mcp:local:
+MCP_PUBLIC_BASE_URL=http://127.0.0.1:3100
+MCP_ACCESS_TOKEN_TTL_SECONDS=60
+RESPAN_API_BASE_URL=http://127.0.0.1:8000/api
+
+# Used only by the complete local verification probe:
+OAUTH_TEST_EMAIL=<local-test-account-email>
+OAUTH_TEST_PASSWORD=<local-test-account-password>
+OAUTH_TEST_API_KEY=<local-test-api-key>
+```
+
+Run the local service and the probe:
+
+```bash
+npm run dev:oauth
+npm run verify:oauth:local
+```
+
+The probe starts its own isolated harness on `127.0.0.1:3100`, uses a unique
+Redis key prefix, prints only step status and duration, and removes only keys
+under that unique prefix. Do not run `dev:oauth` simultaneously on the same
+port. Google login requires separately configured local backend credentials;
+the deterministic automated suite covers the broker behavior without them.
+
+Automated checks:
+
+```bash
+npm test
+TEST_REDIS_URL=redis://127.0.0.1:6379/15 npm test -- --run tests/redis-store.integration.test.ts
+npm run build
+git diff --check
 ```
 
 ---

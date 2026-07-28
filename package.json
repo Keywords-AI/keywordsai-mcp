@@ -10,6 +10,9 @@
     "build": "tsc && vite build",
     "build:server": "tsc",
     "dev": "vite",
+    "dev:oauth": "tsx scripts/oauth-dev-server.ts",
+    "verify:oauth:local": "tsx scripts/verify-oauth-local.ts",
+    "test": "vitest run",
     "stdio": "npm run build:server && node dist/lib/index.js",
     "start": "node dist/lib/index.js",
     "clean": "rm -rf dist"
@@ -22,12 +25,15 @@
     "@respan/respan-api": "^0.1.16",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@upstash/redis": "^1.38.0",
     "@vitejs/plugin-react": "^6.0.1",
     "ai": "^6.0.141",
+    "dotenv": "^17.4.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
+    "redis": "^6.1.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.2.2",
@@ -39,6 +45,9 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vercel/node": "^5.5.16",
-    "typescript": "^5.3.0"
+    "@vitest/coverage-v8": "^4.1.10",
+    "tsx": "^4.23.1",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.10"
   }
 }
