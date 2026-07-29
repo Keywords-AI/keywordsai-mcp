@@ -76,10 +76,6 @@ function sendUnauthorized(
   });
 }
 
-function isLegacyJwt(value: string): boolean {
-  return /^eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
-}
-
 function oauthBackendBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/api\/?$/, '');
 }
@@ -173,10 +169,7 @@ export function createMcpHandler(
         );
         backendCredential = oauthAccess.backendAccessJwt;
         baseUrl = oauthBackendBaseUrl(config.realms[realm].backendBaseUrl);
-      } else if (
-        bearer?.startsWith('mcp_')
-        || (bearer !== undefined && isLegacyJwt(bearer))
-      ) {
+      } else if (bearer?.startsWith('mcp_')) {
         return sendUnauthorized(res, resourceMetadataPath);
       } else {
         backendCredential = bearer || process.env.RESPAN_API_KEY;

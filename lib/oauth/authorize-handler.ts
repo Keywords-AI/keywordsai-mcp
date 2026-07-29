@@ -88,6 +88,7 @@ export function createAuthorizeHandler(realm: OAuthRealm) {
       res.setHeader(
         'Set-Cookie',
         browserCsrfCookie(
+          started.transactionToken,
           started.browserCsrf,
           config.publicBaseUrl.startsWith('https://'),
         ),

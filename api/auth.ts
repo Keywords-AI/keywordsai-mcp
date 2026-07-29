@@ -122,7 +122,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (context && store && broker) {
-      if (!hasValidBrowserCsrfCookie(req, context.csrf)) {
+      if (!hasValidBrowserCsrfCookie(
+        req,
+        context.transactionId,
+        context.csrf,
+        config!.publicBaseUrl.startsWith('https://'),
+      )) {
         throw new OAuthRequestError('invalid_request', 400, 'Invalid browser CSRF binding');
       }
       await enforceRateLimit(
@@ -216,7 +221,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         res.setHeader(
           'Set-Cookie',
-          clearBrowserCsrfCookie(config!.publicBaseUrl.startsWith('https://')),
+          clearBrowserCsrfCookie(
+            context.transactionId,
+            config!.publicBaseUrl.startsWith('https://'),
+          ),
         );
         return res.status(200).json({ redirect_url: redirectUrl });
       }
@@ -272,7 +280,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
       res.setHeader(
         'Set-Cookie',
-        clearBrowserCsrfCookie(config!.publicBaseUrl.startsWith('https://')),
+        clearBrowserCsrfCookie(
+          context.transactionId,
+          config!.publicBaseUrl.startsWith('https://'),
+        ),
       );
       return res.status(200).json({ redirect_url: redirectUrl });
     }

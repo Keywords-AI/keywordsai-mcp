@@ -36,7 +36,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const realm = getRealm(req);
   try {
     const config = getOAuthConfig();
-    if (!hasValidBrowserCsrfCookie(req, csrf)) {
+    if (!hasValidBrowserCsrfCookie(
+      req,
+      transactionId,
+      csrf,
+      config.publicBaseUrl.startsWith('https://'),
+    )) {
       return res.status(400).json({ error: 'invalid_request' });
     }
     const store = getSessionStore();
@@ -53,7 +58,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       callback.searchParams.set('state', pending.value.clientState);
       res.setHeader(
         'Set-Cookie',
-        clearBrowserCsrfCookie(config.publicBaseUrl.startsWith('https://')),
+        clearBrowserCsrfCookie(
+          transactionId,
+          config.publicBaseUrl.startsWith('https://'),
+        ),
       );
       return res.status(200).json({ redirect_url: callback.toString() });
     }

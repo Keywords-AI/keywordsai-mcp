@@ -151,6 +151,34 @@ describe('MCP authentication boundary', () => {
     expect(store.operations).toBe(0);
   });
 
+  it('keeps a direct-login backend JWT on the zero-store API-key path', async () => {
+    const store = new InMemorySessionStore();
+    setSessionStoreForTests(store);
+    const directLoginAccess = jwt('direct-login-access');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ results: [], count: 0 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const handler = createMcpHandler(
+      'https://api.respan.ai',
+      '/.well-known/oauth-protected-resource',
+      'platform',
+    );
+    const response = new MockResponse();
+    await handler(request(directLoginAccess, 'tools/call', {
+      name: 'list_customers',
+      arguments: { page_size: 1, page: 1 },
+    }), response as any);
+
+    expect(response.statusCode).toBe(200);
+    expect(store.operations).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const outboundHeaders = new Headers(fetchMock.mock.calls[0][1]?.headers);
+    expect(outboundHeaders.get('authorization')).toBe(
+      `Bearer ${directLoginAccess}`,
+    );
+  });
+
   it('never combines a fallback API key with a caller-provided backend URL', async () => {
     process.env.RESPAN_API_KEY = 'server-fallback-secret';
     const store = new InMemorySessionStore();

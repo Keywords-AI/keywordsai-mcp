@@ -6,6 +6,7 @@ import {
   resetOAuthConfigForTests,
 } from '../lib/oauth/config.js';
 import { InMemorySessionStore } from '../lib/oauth/memory-store.js';
+import { browserCsrfCookie } from '../lib/oauth/browser-csrf.js';
 import {
   resetSessionStoreForTests,
   setSessionStoreForTests,
@@ -77,10 +78,15 @@ describe('browser OAuth completion boundary', () => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
 
     const response = new MockResponse();
+    const csrfCookie = browserCsrfCookie(
+      started.transactionToken,
+      started.browserCsrf,
+      true,
+    ).split(';')[0];
     await authHandler({
       method: 'POST',
       headers: {
-        cookie: `respan_mcp_oauth_csrf=${started.browserCsrf}`,
+        cookie: csrfCookie,
       },
       socket: { remoteAddress: '127.0.0.1' },
       body: {

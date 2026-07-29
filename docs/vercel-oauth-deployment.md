@@ -55,7 +55,8 @@ workflow.
 
 The deployed service must preserve all of these invariants:
 
-- MCP clients receive only opaque `mcp_at_...` and `mcp_rt_...` credentials.
+- OAuth MCP clients receive only opaque `mcp_at_...` and `mcp_rt_...`
+  credentials.
 - Backend access and refresh JWTs remain encrypted inside broker records.
 - The inbound MCP credential is never forwarded to the backend.
 - Redis keys contain hashes and namespaced record identifiers, not raw tokens.
@@ -63,6 +64,9 @@ The deployed service must preserve all of these invariants:
   key prefixes.
 - A real Respan API key continues through the independent API-key path and does
   not depend on Redis.
+- Backend access JWTs emitted by the existing non-OAuth `/login` configuration
+  remain on that same Redis-independent compatibility path. Only `mcp_`-
+  prefixed credentials are reserved for the broker.
 - Production access sessions last no more than 14,400 seconds.
 - Refresh sessions last no longer than the backend refresh JWT, approximately
   30 days.
@@ -240,7 +244,7 @@ Vercel overrides:
 | `MCP_AUTHORIZATION_CODE_TTL_SECONDS` | `600` | One-use authorization-code lifetime. |
 | `MCP_AUTHORIZATION_TRANSACTION_TTL_SECONDS` | `600` | Pending browser authorization lifetime. |
 | `MCP_REFRESH_SESSION_TTL_SECONDS` | `2592000` | Maximum refresh-session lifetime, 30 days. |
-| `MCP_REFRESH_LOCK_TTL_SECONDS` | `30` | Refresh concurrency lock lifetime. |
+| `MCP_REFRESH_LOCK_TTL_SECONDS` | `30` | Refresh concurrency lock lifetime. Values below 30 are rejected so the lock outlives the eight-second backend timeout. |
 | `VERCEL_ENV` | Supplied by Vercel | Environment detection and production HTTPS enforcement. |
 | `NODE_ENV` | Supplied by the runtime/build | Local fallback for namespacing when `VERCEL_ENV` is absent. Do not override it in Vercel. |
 
@@ -402,6 +406,8 @@ Verify in Preview:
 - Missing, malformed, expired, or wrong-resource `mcp_at_...` returns 401.
 - A non-MCP bearer credential follows the API-key path and never falls through
   from an OAuth failure.
+- A backend access JWT produced by direct `/login` still initializes MCP and
+  calls a tool without a Redis operation.
 - Redis unavailability during MCP access validation produces 503 with
   `Retry-After`, not 401.
 - Temporary Redis, backend network, or backend 5xx errors during refresh return

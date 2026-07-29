@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const MIN_REFRESH_LOCK_TTL_SECONDS = 30;
+
 export type OAuthRealm = 'platform' | 'enterprise';
 
 export type RealmConfig = {
@@ -37,7 +39,10 @@ const envSchema = z.object({
   MCP_AUTHORIZATION_CODE_TTL_SECONDS: z.coerce.number().int().min(60).max(600).default(600),
   MCP_AUTHORIZATION_TRANSACTION_TTL_SECONDS: z.coerce.number().int().min(60).max(600).default(600),
   MCP_REFRESH_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(30 * 24 * 60 * 60).default(30 * 24 * 60 * 60),
-  MCP_REFRESH_LOCK_TTL_SECONDS: z.coerce.number().int().min(5).max(60).default(30),
+  MCP_REFRESH_LOCK_TTL_SECONDS: z.coerce.number().int()
+    .min(MIN_REFRESH_LOCK_TTL_SECONDS)
+    .max(60)
+    .default(MIN_REFRESH_LOCK_TTL_SECONDS),
   MCP_REDIS_KEY_PREFIX: z.string().min(1).optional(),
   RESPAN_API_BASE_URL: z.string().url().default('https://api.respan.ai/api'),
   RESPAN_ENTERPRISE_API_BASE_URL: z.string().url().default('https://endpoint.respan.ai/api'),

@@ -17,6 +17,7 @@ import {
 } from '../lib/shared/oauth.js';
 import {
   browserCsrfCookie,
+  clearBrowserCsrfCookie,
   hasValidBrowserCsrfCookie,
 } from '../lib/oauth/browser-csrf.js';
 
@@ -126,7 +127,17 @@ describe('OAuth crypto and configuration', () => {
       OAUTH_SESSION_STORE: 'memory',
       MCP_ACCESS_TOKEN_TTL_SECONDS: '59',
     })).toThrow('Invalid OAuth configuration');
+    expect(() => loadOAuthConfig({
+      OAUTH_SECRET: SECRET,
+      OAUTH_SESSION_STORE: 'memory',
+      MCP_REFRESH_LOCK_TTL_SECONDS: '29',
+    })).toThrow('Invalid OAuth configuration');
     expect(config(60).accessTokenTtlSeconds).toBe(60);
+    expect(loadOAuthConfig({
+      OAUTH_SECRET: SECRET,
+      OAUTH_SESSION_STORE: 'memory',
+      MCP_REFRESH_LOCK_TTL_SECONDS: '30',
+    }).refreshLockTtlSeconds).toBe(30);
   });
 
   it('rejects ephemeral or insecure production deployment configuration', () => {
@@ -171,18 +182,56 @@ describe('OAuth crypto and configuration', () => {
     });
   });
 
-  it('binds browser approval to an HttpOnly SameSite CSRF cookie', () => {
-    const header = browserCsrfCookie('browser-csrf', true);
-    expect(header).toContain('__Host-respan_mcp_oauth_csrf=');
-    expect(header).toContain('HttpOnly');
-    expect(header).toContain('SameSite=Lax');
-    expect(header).toContain('Secure');
-    expect(hasValidBrowserCsrfCookie({
-      headers: { cookie: 'respan_mcp_oauth_csrf=browser-csrf' },
-    } as any, 'browser-csrf')).toBe(true);
-    expect(hasValidBrowserCsrfCookie({
-      headers: { cookie: 'respan_mcp_oauth_csrf=other' },
-    } as any, 'browser-csrf')).toBe(false);
+  it('keeps transaction-bound CSRF cookies valid across concurrent tabs', () => {
+    const firstHeader = browserCsrfCookie(
+      'mcp_tx_first',
+      'browser-csrf-first',
+      true,
+    );
+    const secondHeader = browserCsrfCookie(
+      'mcp_tx_second',
+      'browser-csrf-second',
+      true,
+    );
+    const firstCookie = firstHeader.split(';')[0];
+    const secondCookie = secondHeader.split(';')[0];
+    const request = {
+      headers: { cookie: `${firstCookie}; ${secondCookie}` },
+    } as any;
+
+    expect(firstHeader).toContain('__Host-respan_mcp_oauth_csrf_');
+    expect(firstHeader).toContain('HttpOnly');
+    expect(firstHeader).toContain('SameSite=Lax');
+    expect(firstHeader).toContain('Secure');
+    expect(firstCookie.split('=')[0]).not.toBe(secondCookie.split('=')[0]);
+    expect(hasValidBrowserCsrfCookie(
+      request,
+      'mcp_tx_first',
+      'browser-csrf-first',
+      true,
+    )).toBe(true);
+    expect(hasValidBrowserCsrfCookie(
+      request,
+      'mcp_tx_second',
+      'browser-csrf-second',
+      true,
+    )).toBe(true);
+    expect(hasValidBrowserCsrfCookie(
+      request,
+      'mcp_tx_first',
+      'browser-csrf-second',
+      true,
+    )).toBe(false);
+    expect(hasValidBrowserCsrfCookie(
+      request,
+      'mcp_tx_first',
+      'browser-csrf-first',
+      false,
+    )).toBe(false);
+
+    const cleared = clearBrowserCsrfCookie('mcp_tx_first', true);
+    expect(cleared).toContain(`${firstCookie.split('=')[0]}=`);
+    expect(cleared).not.toContain(secondCookie.split('=')[0]);
   });
 });
 
