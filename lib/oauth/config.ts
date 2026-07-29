@@ -72,8 +72,25 @@ export function loadOAuthConfig(
       'Invalid OAuth configuration: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for the upstash session store',
     );
   }
+  if (values.VERCEL_ENV && values.OAUTH_SESSION_STORE !== 'upstash') {
+    throw new Error(
+      'Invalid OAuth configuration: Vercel deployments require the upstash session store',
+    );
+  }
 
   const publicBaseUrl = withoutTrailingSlash(values.MCP_PUBLIC_BASE_URL);
+  if (values.VERCEL_ENV === 'production') {
+    const productionUrls = [
+      publicBaseUrl,
+      values.RESPAN_API_BASE_URL,
+      values.RESPAN_ENTERPRISE_API_BASE_URL,
+    ];
+    if (productionUrls.some((value) => !value.startsWith('https://'))) {
+      throw new Error(
+        'Invalid OAuth configuration: production public and backend URLs must use HTTPS',
+      );
+    }
+  }
   const environment = values.VERCEL_ENV || values.NODE_ENV || 'development';
   const redisKeyPrefix = values.MCP_REDIS_KEY_PREFIX
     || `respan-mcp:${environment}:`;

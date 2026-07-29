@@ -47,6 +47,8 @@ describe('browser OAuth completion boundary', () => {
     process.env.OAUTH_SESSION_STORE = 'memory';
     process.env.MCP_PUBLIC_BASE_URL = 'https://mcp.respan.ai';
     process.env.MCP_REDIS_KEY_PREFIX = 'respan-mcp:auth-handler-test:';
+    delete process.env.RESPAN_API_BASE_URL;
+    delete process.env.RESPAN_ENTERPRISE_API_BASE_URL;
     resetOAuthConfigForTests();
     await resetSessionStoreForTests();
   });
@@ -130,5 +132,25 @@ describe('browser OAuth completion boundary', () => {
     } as any, response as any);
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: 'invalid_request' });
+  });
+
+  it('rejects an unconfigured authentication backend before proxying credentials', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const response = new MockResponse();
+    await authHandler({
+      method: 'POST',
+      headers: {
+        'respan-api-base-url': 'http://169.254.169.254/latest/meta-data',
+      },
+      socket: { remoteAddress: '127.0.0.1' },
+      body: {
+        action: 'login',
+        email: 'local@example.com',
+        password: 'must-not-be-forwarded',
+      },
+    } as any, response as any);
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: 'invalid_request' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

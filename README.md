@@ -252,6 +252,19 @@ under that unique prefix. Do not run `dev:oauth` simultaneously on the same
 port. Google login requires separately configured local backend credentials;
 the deterministic automated suite covers the broker behavior without them.
 
+Hosted OAuth client registrations accept HTTPS callbacks and HTTP callbacks
+bound to the literal loopback addresses `127.0.0.1` or `[::1]`. Other HTTP
+hosts, executable URL schemes, credentials, fragments, duplicate callbacks,
+and oversized callback lists are rejected.
+
+Vercel deployments require Upstash rather than the in-memory store. Production
+public and backend URLs must use HTTPS, and OAuth secrets and Redis credentials
+must be configured only through the deployment secret manager.
+
+For the complete Preview and Production setup, environment-variable matrix,
+Vercel service configuration, verification gate, monitoring, and rollback
+procedure, see [Public MCP OAuth Broker: Vercel Deployment Runbook](docs/vercel-oauth-deployment.md).
+
 Automated checks:
 
 ```bash

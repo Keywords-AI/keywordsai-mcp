@@ -127,6 +127,8 @@ describe('MCP authentication boundary', () => {
     process.env.MCP_PUBLIC_BASE_URL = 'https://mcp.respan.ai';
     process.env.MCP_REDIS_KEY_PREFIX = 'respan-mcp:handler-test:';
     delete process.env.RESPAN_API_KEY;
+    delete process.env.RESPAN_API_BASE_URL;
+    delete process.env.RESPAN_ENTERPRISE_API_BASE_URL;
     resetOAuthConfigForTests();
     await resetSessionStoreForTests();
   });
@@ -147,6 +149,49 @@ describe('MCP authentication boundary', () => {
     await handler(request('sk-respan-realistic-api-key'), response as any);
     expect(response.statusCode).toBe(200);
     expect(store.operations).toBe(0);
+  });
+
+  it('never combines a fallback API key with a caller-provided backend URL', async () => {
+    process.env.RESPAN_API_KEY = 'server-fallback-secret';
+    const store = new InMemorySessionStore();
+    setSessionStoreForTests(store);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ results: [], count: 0 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const handler = createMcpHandler(
+      'https://api.respan.ai',
+      '/.well-known/oauth-protected-resource',
+      'platform',
+    );
+    const maliciousRequest = request('unused', 'tools/call', {
+      name: 'list_customers',
+      arguments: { page_size: 1, page: 1 },
+    });
+    delete maliciousRequest.headers.authorization;
+    maliciousRequest.headers['respan-api-base-url'] = 'https://attacker.example/api';
+    const response = new MockResponse();
+    await handler(maliciousRequest, response as any);
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/^https:\/\/api\.respan\.ai\//);
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('attacker.example');
+  });
+
+  it('rejects an unconfigured backend target even with a supplied API key', async () => {
+    const store = new InMemorySessionStore();
+    setSessionStoreForTests(store);
+    const handler = createMcpHandler(
+      'https://api.respan.ai',
+      '/.well-known/oauth-protected-resource',
+      'platform',
+    );
+    const maliciousRequest = request('sk-respan-realistic-api-key');
+    maliciousRequest.headers['respan-api-base-url'] = 'https://attacker.example/api';
+    const response = new MockResponse();
+    await handler(maliciousRequest, response as any);
+    expect(response.statusCode).toBe(400);
   });
 
   it('returns canonical 401 before server construction for an invalid MCP token', async () => {

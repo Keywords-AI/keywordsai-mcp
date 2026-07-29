@@ -21,7 +21,7 @@
     "@ai-sdk/openai": "^3.0.48",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@respan/instrumentation-vercel": "^1.0.1",
-    "@respan/respan": "^2.0.1",
+    "@respan/respan": "2.0.1",
     "@respan/respan-api": "^0.1.16",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react-syntax-highlighter": "^15.5.13",
@@ -37,7 +37,7 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.2.2",
-    "vite": "^8.0.3",
+    "vite": "^8.1.5",
     "zod": "^3.24.0"
   },
   "devDependencies": {
@@ -49,5 +49,11 @@
     "tsx": "^4.23.1",
     "typescript": "^5.3.0",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.4",
+    "postcss": "^8.5.23",
+    "protobufjs": "^7.6.5",
+    "qs": "^6.15.3"
   }
 }

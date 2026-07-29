@@ -17,6 +17,10 @@ import { getOAuthConfig, type OAuthRealm } from '../oauth/config.js';
 import { InvalidAccessTokenError } from '../oauth/errors.js';
 import { getSessionStore } from '../oauth/store-factory.js';
 import { SessionStoreUnavailableError } from '../oauth/store.js';
+import {
+  DisallowedBackendUrlError,
+  resolveAllowedBackendUrl,
+} from './backend-url.js';
 
 function createServer(
   client: AuthenticatedClient | null,
@@ -179,10 +183,16 @@ export function createMcpHandler(
         if (!backendCredential) {
           return sendUnauthorized(res, resourceMetadataPath);
         }
-        baseUrl = (req.headers['respan-api-base-url'] as string)
-          || (req.headers['keywords-api-base-url'] as string)
-          || process.env.RESPAN_API_BASE_URL
-          || defaultBaseUrl;
+        const configuredBaseUrl = (
+          realm === 'enterprise'
+            ? process.env.RESPAN_ENTERPRISE_API_BASE_URL
+            : process.env.RESPAN_API_BASE_URL
+        ) || defaultBaseUrl;
+        const requestedBaseUrl = (req.headers['respan-api-base-url'] as string)
+          || (req.headers['keywords-api-base-url'] as string);
+        baseUrl = bearer
+          ? resolveAllowedBackendUrl(requestedBaseUrl, configuredBaseUrl)
+          : resolveAllowedBackendUrl(undefined, configuredBaseUrl);
       }
 
       const trackedFetch: typeof fetch = async (input, init) => {
@@ -228,6 +238,13 @@ export function createMcpHandler(
         || (error instanceof Error && error.name === 'ZodError')
       ) {
         return sendUnauthorized(res, resourceMetadataPath);
+      }
+      if (error instanceof DisallowedBackendUrlError) {
+        return res.status(400).json({
+          jsonrpc: '2.0',
+          error: { code: -32602, message: 'Invalid backend URL' },
+          id: null,
+        });
       }
       if (error instanceof SessionStoreUnavailableError) {
         res.setHeader('Retry-After', '5');

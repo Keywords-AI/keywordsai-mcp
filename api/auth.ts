@@ -10,6 +10,10 @@ import {
   clearBrowserCsrfCookie,
   hasValidBrowserCsrfCookie,
 } from '../lib/oauth/browser-csrf.js';
+import {
+  DisallowedBackendUrlError,
+  resolveAllowedBackendUrl,
+} from '../lib/shared/backend-url.js';
 
 const DEFAULT_BASE_URL = 'https://api.respan.ai/api';
 
@@ -96,10 +100,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? new OAuthBroker({ config, store })
     : undefined;
 
-  let baseUrl = (req.headers['respan-api-base-url'] as string)
+  const requestedBaseUrl = (req.headers['respan-api-base-url'] as string)
     || (req.headers['keywords-api-base-url'] as string)
-    || process.env.RESPAN_API_BASE_URL
-    || DEFAULT_BASE_URL;
+    || undefined;
+  const defaultBaseUrl = body.enterprise === true
+    ? process.env.RESPAN_ENTERPRISE_API_BASE_URL || 'https://endpoint.respan.ai/api'
+    : process.env.RESPAN_API_BASE_URL || DEFAULT_BASE_URL;
+  let baseUrl: string;
+  try {
+    baseUrl = resolveAllowedBackendUrl(requestedBaseUrl, defaultBaseUrl);
+  } catch (error) {
+    if (error instanceof DisallowedBackendUrlError) {
+      return res.status(400).json({ error: 'invalid_request' });
+    }
+    throw error;
+  }
   if (context && config) {
     baseUrl = config.realms[context.realm].backendBaseUrl;
   }

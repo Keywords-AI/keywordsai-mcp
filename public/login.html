@@ -388,6 +388,17 @@
             color: var(--gray4);
         }
 
+        .oauth-warning {
+            margin-bottom: 8px;
+            color: #f6c177;
+            font-weight: 600;
+        }
+
+        .oauth-access-warning {
+            margin: 8px 0 0;
+            color: var(--gray4);
+        }
+
         .oauth-approval {
             display: flex;
             align-items: flex-start;
@@ -431,11 +442,23 @@
                 <div id="error" class="error-msg"></div>
 
                 <div id="oauth-confirmation" class="oauth-confirmation">
+                    <div class="oauth-warning">Unverified OAuth client</div>
                     <strong id="oauth-client-name"></strong> is requesting access.
+                    <p class="oauth-access-warning">
+                        Respan has not verified this client. Approval grants access to
+                        every MCP tool allowed by your account, including tools that
+                        can read or change data.
+                    </p>
+                    <p class="oauth-access-warning">
+                        Callback destination: <strong id="oauth-redirect-host"></strong>
+                    </p>
                     <code id="oauth-redirect-uri"></code>
                     <label class="oauth-approval">
                         <input type="checkbox" id="oauth-approve">
-                        <span>I approve this client and redirect URI.</span>
+                        <span>
+                            I understand this unverified client will receive full MCP
+                            access and approve this exact callback.
+                        </span>
                     </label>
                     <button class="btn-default" id="oauth-cancel" type="button" style="margin-top: 12px;">
                         Cancel
@@ -597,6 +620,27 @@
             statusEl.style.display = 'none';
         }
 
+        function isAllowedOAuthRedirect(target) {
+            try {
+                const parsed = new URL(target);
+                if (parsed.hash || parsed.username || parsed.password) return false;
+                if (parsed.protocol === 'https:' && parsed.hostname) return true;
+                return parsed.protocol === 'http:'
+                    && (parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]');
+            } catch {
+                return false;
+            }
+        }
+
+        function navigateToOAuthRedirect(target) {
+            if (!isAllowedOAuthRedirect(target)) {
+                showError('The OAuth callback destination is unsafe.');
+                return false;
+            }
+            window.location.assign(target);
+            return true;
+        }
+
         async function loadOAuthContext() {
             if (!oauthParams) return;
             try {
@@ -613,6 +657,7 @@
                 }
                 $('#oauth-client-name').textContent = data.client_name;
                 $('#oauth-redirect-uri').textContent = data.redirect_uri;
+                $('#oauth-redirect-host').textContent = new URL(data.redirect_uri).host;
                 $('#oauth-confirmation').style.display = 'block';
             } catch {
                 showError('Unable to load the authorization request.');
@@ -727,7 +772,7 @@
                 method: 'DELETE',
             });
             const data = await resp.json();
-            if (data.redirect_url) window.location.href = data.redirect_url;
+            if (data.redirect_url) navigateToOAuthRedirect(data.redirect_url);
         });
 
         // --- Google OAuth: start ---
@@ -803,7 +848,7 @@
                 if (data.redirect_url && oauthParams) {
                     sessionStorage.removeItem('oauth_params');
                     sessionStorage.removeItem('enterprise');
-                    window.location.href = data.redirect_url;
+                    navigateToOAuthRedirect(data.redirect_url);
                 } else if (data.access) {
                     showTokens(data.access);
                 } else {
@@ -849,7 +894,7 @@
                 if (data.redirect_url && oauthParams) {
                     sessionStorage.removeItem('oauth_params');
                     sessionStorage.removeItem('enterprise');
-                    window.location.href = data.redirect_url;
+                    navigateToOAuthRedirect(data.redirect_url);
                 } else if (data.access) {
                     showTokens(data.access);
                 } else {

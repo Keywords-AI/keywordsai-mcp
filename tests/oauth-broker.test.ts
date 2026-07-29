@@ -129,6 +129,22 @@ describe('OAuth crypto and configuration', () => {
     expect(config(60).accessTokenTtlSeconds).toBe(60);
   });
 
+  it('rejects ephemeral or insecure production deployment configuration', () => {
+    expect(() => loadOAuthConfig({
+      OAUTH_SECRET: SECRET,
+      OAUTH_SESSION_STORE: 'memory',
+      VERCEL_ENV: 'preview',
+    })).toThrow('Vercel deployments require the upstash session store');
+    expect(() => loadOAuthConfig({
+      OAUTH_SECRET: SECRET,
+      OAUTH_SESSION_STORE: 'upstash',
+      UPSTASH_REDIS_REST_URL: 'https://redis.example',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      MCP_PUBLIC_BASE_URL: 'http://mcp.example',
+      VERCEL_ENV: 'production',
+    })).toThrow('production public and backend URLs must use HTTPS');
+  });
+
   it('rejects malformed and unknown-version session records', () => {
     expect(() => parseAccessSession({
       version: 2,
@@ -157,6 +173,7 @@ describe('OAuth crypto and configuration', () => {
 
   it('binds browser approval to an HttpOnly SameSite CSRF cookie', () => {
     const header = browserCsrfCookie('browser-csrf', true);
+    expect(header).toContain('__Host-respan_mcp_oauth_csrf=');
     expect(header).toContain('HttpOnly');
     expect(header).toContain('SameSite=Lax');
     expect(header).toContain('Secure');
