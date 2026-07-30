@@ -1,6 +1,7 @@
 import { config as loadEnv } from 'dotenv';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { Redis as UpstashRedis } from '@upstash/redis';
 import { createClient } from 'redis';
 
 loadEnv({ path: '.env.local' });
@@ -10,7 +11,12 @@ const callbackUrl = 'http://127.0.0.1:3199/callback';
 const email = process.env.OAUTH_TEST_EMAIL;
 const password = process.env.OAUTH_TEST_PASSWORD;
 const apiKey = process.env.OAUTH_TEST_API_KEY;
+const sessionStore = process.env.OAUTH_SESSION_STORE || 'redis';
 const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379/15';
+const verifyRefreshExpiry = process.env.OAUTH_VERIFY_REFRESH_EXPIRY === 'true';
+const refreshSessionTtlSeconds = Number(
+  process.env.MCP_REFRESH_SESSION_TTL_SECONDS || 0,
+);
 const probeId = randomBytes(8).toString('hex');
 const keyPrefix = `respan-mcp:local:probe:${probeId}:`;
 
@@ -89,18 +95,73 @@ async function waitForServer(child: ChildProcess): Promise<void> {
   throw new Error('Local OAuth server did not become ready');
 }
 
-async function redisKeys(client: ReturnType<typeof createClient>): Promise<string[]> {
-  const keys: string[] = [];
-  for await (const key of client.scanIterator({ MATCH: `${keyPrefix}*`, COUNT: 100 })) {
-    keys.push(String(key));
+type RedisInspector = {
+  ping(): Promise<unknown>;
+  keys(): Promise<string[]>;
+  get(key: string): Promise<unknown>;
+  delete(keys: string[]): Promise<void>;
+  close(): Promise<void>;
+};
+
+async function createRedisInspector(): Promise<RedisInspector> {
+  if (sessionStore === 'upstash') {
+    const url = required(process.env.UPSTASH_REDIS_REST_URL, 'UPSTASH_REDIS_REST_URL');
+    const token = required(process.env.UPSTASH_REDIS_REST_TOKEN, 'UPSTASH_REDIS_REST_TOKEN');
+    const client = new UpstashRedis({ url, token });
+    return {
+      ping: () => client.ping(),
+      keys: async () => {
+        const keys: string[] = [];
+        let cursor = '0';
+        do {
+          const [nextCursor, page] = await client.scan(cursor, {
+            match: `${keyPrefix}*`,
+            count: 100,
+          });
+          keys.push(...page);
+          cursor = nextCursor;
+        } while (cursor !== '0');
+        return keys;
+      },
+      get: (key) => client.get(key),
+      delete: async (keys) => {
+        if (keys.length > 0) await client.del(...keys);
+      },
+      close: async () => {},
+    };
   }
-  return keys;
+
+  const client = createClient({ url: redisUrl });
+  await client.connect();
+  return {
+    ping: () => client.ping(),
+    keys: async () => {
+      const keys: string[] = [];
+      for await (const key of client.scanIterator({ MATCH: `${keyPrefix}*`, COUNT: 100 })) {
+        keys.push(String(key));
+      }
+      return keys;
+    },
+    get: (key) => client.get(key),
+    delete: async (keys) => {
+      if (keys.length > 0) await client.del(keys);
+    },
+    close: () => client.quit(),
+  };
 }
 
 async function run(): Promise<void> {
   required(email, 'OAUTH_TEST_EMAIL');
   required(password, 'OAUTH_TEST_PASSWORD');
   required(apiKey, 'OAUTH_TEST_API_KEY');
+  if (
+    verifyRefreshExpiry
+    && (!Number.isInteger(refreshSessionTtlSeconds) || refreshSessionTtlSeconds < 60)
+  ) {
+    throw new Error(
+      'MCP_REFRESH_SESSION_TTL_SECONDS must be at least 60 when OAUTH_VERIFY_REFRESH_EXPIRY=true',
+    );
+  }
 
   await step('local backend reachable', async () => {
     const response = await fetch(
@@ -109,9 +170,8 @@ async function run(): Promise<void> {
     assert(response.status < 500, 'Local backend is unavailable');
   });
 
-  const redis = createClient({ url: redisUrl });
-  await step('local Redis reachable', async () => {
-    await redis.connect();
+  const redis = await createRedisInspector();
+  await step(`${sessionStore} Redis reachable`, async () => {
     await redis.ping();
   });
 
@@ -123,7 +183,7 @@ async function run(): Promise<void> {
       env: {
         ...process.env,
         OAUTH_SECRET: process.env.OAUTH_SECRET || randomBytes(48).toString('base64url'),
-        OAUTH_SESSION_STORE: 'redis',
+        OAUTH_SESSION_STORE: sessionStore,
         REDIS_URL: redisUrl,
         MCP_REDIS_KEY_PREFIX: keyPrefix,
         MCP_PUBLIC_BASE_URL: baseUrl,
@@ -257,6 +317,7 @@ async function run(): Promise<void> {
       assert(!JSON.stringify(responseBody).includes('eyJ'), 'Token response contains a backend JWT');
       return responseBody;
     });
+    const refreshSessionIssuedAt = Date.now();
 
     await step('authorization code reuse rejected', async () => {
       const response = await fetch(metadata.token_endpoint, {
@@ -269,7 +330,7 @@ async function run(): Promise<void> {
     });
 
     await step('hashed Redis keys and encrypted credentials', async () => {
-      const keys = await redisKeys(redis);
+      const keys = await redis.keys();
       assert(keys.length > 0, 'Probe session did not create Redis records');
       assert(keys.every((key) => !key.includes('mcp_at_') && !key.includes('mcp_rt_')), 'Redis key contains an opaque token');
       for (const key of keys) {
@@ -362,23 +423,58 @@ async function run(): Promise<void> {
     });
 
     await step('API key path performs zero Redis writes and calls a tool', async () => {
-      const before = (await redisKeys(redis)).sort();
+      const before = (await redis.keys()).sort();
       const result = await mcpRequest(apiKey!, 'tools/call', {
         name: 'list_customers',
         arguments: { page_size: 1, page: 1 },
       }, 8);
       assert(result.response.ok && result.body.result && !result.body.result.isError, 'API key tool call failed');
-      const after = (await redisKeys(redis)).sort();
+      const after = (await redis.keys()).sort();
       assert(JSON.stringify(after) === JSON.stringify(before), 'API key path changed Redis state');
     });
+
+    if (verifyRefreshExpiry) {
+      await step('refresh expiry requires reauthorization', async () => {
+        const expiresAt = refreshSessionIssuedAt + refreshSessionTtlSeconds * 1000;
+        const waitMs = Math.max(0, expiresAt - Date.now() + 2_000);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+        const refreshResponse = await fetch(metadata.token_endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: rotated.refresh_token,
+            client_id: registration.client_id,
+            resource: `${baseUrl}/mcp`,
+          }),
+        });
+        assert(refreshResponse.status === 400, 'Expired refresh token did not fail');
+        assert(
+          (await json(refreshResponse)).error === 'invalid_grant',
+          'Expired refresh token returned the wrong OAuth error',
+        );
+
+        const accessResponse = await mcpRequest(
+          rotated.access_token,
+          'tools/list',
+          {},
+          9,
+        );
+        assert(
+          accessResponse.response.status === 401,
+          'Access token remained valid after the refresh session expired',
+        );
+      });
+    }
   } finally {
     if (child.exitCode === null) {
       child.kill('SIGTERM');
       await new Promise((resolve) => child.once('exit', resolve));
     }
-    const keys = await redisKeys(redis);
-    if (keys.length > 0) await redis.del(keys);
-    await redis.quit();
+    const keys = await redis.keys();
+    await redis.delete(keys);
+    await redis.close();
   }
 }
 

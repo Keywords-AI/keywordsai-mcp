@@ -179,6 +179,33 @@ describe('MCP authentication boundary', () => {
     );
   });
 
+  it('normalizes a configured /api suffix on the zero-store API-key path', async () => {
+    process.env.RESPAN_API_BASE_URL = 'http://127.0.0.1:8000/api';
+    const store = new InMemorySessionStore();
+    setSessionStoreForTests(store);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ results: [], count: 0 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const handler = createMcpHandler(
+      'https://api.respan.ai',
+      '/.well-known/oauth-protected-resource',
+      'platform',
+    );
+    const response = new MockResponse();
+    await handler(request('sk-respan-realistic-api-key', 'tools/call', {
+      name: 'list_customers',
+      arguments: { page_size: 1, page: 1 },
+    }), response as any);
+
+    expect(response.statusCode).toBe(200);
+    expect(store.operations).toBe(0);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(
+      /^http:\/\/127\.0\.0\.1:8000\/api\/users\/list\//,
+    );
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/api/api/');
+  });
+
   it('never combines a fallback API key with a caller-provided backend URL', async () => {
     process.env.RESPAN_API_KEY = 'server-fallback-secret';
     const store = new InMemorySessionStore();

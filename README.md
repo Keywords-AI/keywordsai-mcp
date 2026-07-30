@@ -239,12 +239,38 @@ OAUTH_TEST_PASSWORD=<local-test-account-password>
 OAUTH_TEST_API_KEY=<local-test-api-key>
 ```
 
+To exercise the same Upstash REST adapter used by Vercel, replace the local
+Redis settings with:
+
+```dotenv
+OAUTH_SESSION_STORE=upstash
+UPSTASH_REDIS_REST_URL=<upstash-rest-url>
+UPSTASH_REDIS_REST_TOKEN=<upstash-rest-token>
+```
+
+Keep the local key prefix distinct from Preview and Production. The probe
+always replaces it with a unique per-run prefix and deletes only those keys.
+
 Run the local service and the probe:
 
 ```bash
 npm run dev:oauth
 npm run verify:oauth:local
 ```
+
+To verify that refresh rotation does not extend an absolute refresh-session
+deadline, run the probe with a short local lifetime:
+
+```bash
+OAUTH_VERIFY_REFRESH_EXPIRY=true \
+MCP_REFRESH_SESSION_TTL_SECONDS=180 \
+npm run verify:oauth:local
+```
+
+The probe rotates the refresh token after the access token expires, waits until
+three minutes from the original session issuance, and then requires
+`invalid_grant` from the latest refresh token. This setting is for local
+verification only.
 
 The probe starts its own isolated harness on `127.0.0.1:3100`, uses a unique
 Redis key prefix, prints only step status and duration, and removes only keys

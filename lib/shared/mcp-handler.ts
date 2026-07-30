@@ -76,7 +76,7 @@ function sendUnauthorized(
   });
 }
 
-function oauthBackendBaseUrl(baseUrl: string): string {
+function sdkBackendBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/api\/?$/, '');
 }
 
@@ -168,7 +168,7 @@ export function createMcpHandler(
           bearer,
         );
         backendCredential = oauthAccess.backendAccessJwt;
-        baseUrl = oauthBackendBaseUrl(config.realms[realm].backendBaseUrl);
+        baseUrl = sdkBackendBaseUrl(config.realms[realm].backendBaseUrl);
       } else if (bearer?.startsWith('mcp_')) {
         return sendUnauthorized(res, resourceMetadataPath);
       } else {
@@ -186,6 +186,7 @@ export function createMcpHandler(
         baseUrl = bearer
           ? resolveAllowedBackendUrl(requestedBaseUrl, configuredBaseUrl)
           : resolveAllowedBackendUrl(undefined, configuredBaseUrl);
+        baseUrl = sdkBackendBaseUrl(baseUrl);
       }
 
       const trackedFetch: typeof fetch = async (input, init) => {
