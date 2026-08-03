@@ -13,6 +13,13 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx"
   },
-  "include": ["lib/**/*"],
-  "exclude": ["node_modules", "dist", "api", "src"]
+  "include": [
+    "lib/**/*",
+    "api/auth.ts",
+    "api/oauth/**/*",
+    "api/mcp.ts",
+    "api/mcp/enterprise.ts",
+    "api/well-known/**/*"
+  ],
+  "exclude": ["node_modules", "dist", "src", "scripts", "tests"]
 }

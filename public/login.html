@@ -370,6 +370,42 @@
             user-select: none;
         }
 
+        .oauth-confirmation {
+            display: none;
+            width: 100%;
+            padding: 14px;
+            border: 1px solid var(--gray3);
+            border-radius: 8px;
+            color: var(--gray5);
+            font-size: 13px;
+            line-height: 18px;
+        }
+
+        .oauth-confirmation code {
+            display: block;
+            margin-top: 4px;
+            overflow-wrap: anywhere;
+            color: var(--gray4);
+        }
+
+        .oauth-warning {
+            margin-bottom: 8px;
+            color: #f6c177;
+            font-weight: 600;
+        }
+
+        .oauth-access-warning {
+            margin: 8px 0 0;
+            color: var(--gray4);
+        }
+
+        .oauth-approval {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
         /* Responsive */
         @media (max-width: 480px) {
             .page-container { padding: 16px 16px; }
@@ -404,6 +440,30 @@
 
                 <div id="status" class="status-msg"></div>
                 <div id="error" class="error-msg"></div>
+
+                <div id="oauth-confirmation" class="oauth-confirmation">
+                    <div class="oauth-warning">Unverified OAuth client</div>
+                    <strong id="oauth-client-name"></strong> is requesting access.
+                    <p class="oauth-access-warning">
+                        Respan has not verified this client. Approval grants access to
+                        every MCP tool allowed by your account, including tools that
+                        can read or change data.
+                    </p>
+                    <p class="oauth-access-warning">
+                        Callback destination: <strong id="oauth-redirect-host"></strong>
+                    </p>
+                    <code id="oauth-redirect-uri"></code>
+                    <label class="oauth-approval">
+                        <input type="checkbox" id="oauth-approve">
+                        <span>
+                            I understand this unverified client will receive full MCP
+                            access and approve this exact callback.
+                        </span>
+                    </label>
+                    <button class="btn-default" id="oauth-cancel" type="button" style="margin-top: 12px;">
+                        Cancel
+                    </button>
+                </div>
 
                 <div class="btn-row" id="auth-buttons">
                     <!-- Google OAuth -->
@@ -518,10 +578,9 @@
 
         if (oauthMode) {
             oauthParams = {
-                client_id: pageParams.get('client_id'),
-                redirect_uri: pageParams.get('redirect_uri'),
-                code_challenge: pageParams.get('code_challenge'),
-                state: pageParams.get('state'),
+                transaction_id: pageParams.get('transaction_id'),
+                csrf: pageParams.get('csrf'),
+                enterprise: isEnterprise,
             };
             $('#page-title').textContent = 'Sign in to authorize';
             $('#page-subtitle').textContent = isEnterprise ? 'Enterprise MCP access' : 'Respan MCP access';
@@ -533,7 +592,7 @@
         if (savedOAuth && !oauthMode) {
             try {
                 const parsed = JSON.parse(savedOAuth);
-                if (parsed.client_id && parsed.redirect_uri && parsed.code_challenge && parsed.state) {
+                if (parsed.transaction_id && parsed.csrf) {
                     oauthParams = parsed;
                     $('#page-title').textContent = 'Sign in to authorize';
                     $('#page-subtitle').textContent = isEnterprise ? 'Enterprise MCP access' : 'Respan MCP access';
@@ -561,40 +620,51 @@
             statusEl.style.display = 'none';
         }
 
-        async function handleOAuthCodeExchange(jwt) {
-            showStatus('Authorizing...');
+        function isAllowedOAuthRedirect(target) {
             try {
-                const resp = await fetch('/oauth/code', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jwt,
-                        client_id: oauthParams.client_id,
-                        redirect_uri: oauthParams.redirect_uri,
-                        code_challenge: oauthParams.code_challenge,
-                        state: oauthParams.state,
-                    }),
-                });
-                const data = await resp.json();
-                if (data.redirect_url) {
-                    sessionStorage.removeItem('oauth_params');
-                    sessionStorage.removeItem('enterprise');
-                    window.location.href = data.redirect_url;
-                } else {
-                    showError(data.error || 'Failed to generate authorization code.');
-                }
+                const parsed = new URL(target);
+                if (parsed.hash || parsed.username || parsed.password) return false;
+                if (parsed.protocol === 'https:' && parsed.hostname) return true;
+                return parsed.protocol === 'http:'
+                    && (parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]');
             } catch {
-                showError('Network error during authorization.');
+                return false;
+            }
+        }
+
+        function navigateToOAuthRedirect(target) {
+            if (!isAllowedOAuthRedirect(target)) {
+                showError('The OAuth callback destination is unsafe.');
+                return false;
+            }
+            window.location.assign(target);
+            return true;
+        }
+
+        async function loadOAuthContext() {
+            if (!oauthParams) return;
+            try {
+                const query = new URLSearchParams({
+                    transaction_id: oauthParams.transaction_id,
+                    csrf: oauthParams.csrf,
+                    ...(oauthParams.enterprise ? { enterprise: 'true' } : {}),
+                });
+                const resp = await fetch('/oauth/code?' + query.toString());
+                const data = await resp.json();
+                if (!resp.ok) {
+                    showError('This authorization request is invalid or expired.');
+                    return;
+                }
+                $('#oauth-client-name').textContent = data.client_name;
+                $('#oauth-redirect-uri').textContent = data.redirect_uri;
+                $('#oauth-redirect-host').textContent = new URL(data.redirect_uri).host;
+                $('#oauth-confirmation').style.display = 'block';
+            } catch {
+                showError('Unable to load the authorization request.');
             }
         }
 
         function showTokens(access) {
-            // If in OAuth mode, exchange the JWT for an auth code and redirect
-            if (oauthParams) {
-                handleOAuthCodeExchange(access);
-                return;
-            }
-
             // Clear enterprise flag from sessionStorage after successful login
             sessionStorage.removeItem('enterprise');
 
@@ -675,9 +745,40 @@
             return h;
         }
 
+        function oauthRequestFields() {
+            if (!oauthParams) return {};
+            return {
+                oauth_transaction: oauthParams.transaction_id,
+                oauth_csrf: oauthParams.csrf,
+                enterprise: Boolean(oauthParams.enterprise),
+                approve: $('#oauth-approve').checked,
+            };
+        }
+
+        function requireApproval() {
+            if (!oauthParams || $('#oauth-approve').checked) return true;
+            showError('Approve the requesting client before continuing.');
+            return false;
+        }
+
+        $('#oauth-cancel').addEventListener('click', async () => {
+            if (!oauthParams) return;
+            const query = new URLSearchParams({
+                transaction_id: oauthParams.transaction_id,
+                csrf: oauthParams.csrf,
+                ...(oauthParams.enterprise ? { enterprise: 'true' } : {}),
+            });
+            const resp = await fetch('/oauth/code?' + query.toString(), {
+                method: 'DELETE',
+            });
+            const data = await resp.json();
+            if (data.redirect_url) navigateToOAuthRedirect(data.redirect_url);
+        });
+
         // --- Google OAuth: start ---
         $('#google-btn').addEventListener('click', async () => {
             clearMessages();
+            if (!requireApproval()) return;
             $('#google-btn').disabled = true;
 
             // Save OAuth params to sessionStorage before Google redirect
@@ -690,12 +791,16 @@
                 const resp = await fetch('/auth', {
                     method: 'POST',
                     headers: authHeaders(),
-                    body: JSON.stringify({ action: 'google_url', redirect_uri: redirectUri })
+                    body: JSON.stringify({
+                        action: 'google_url',
+                        redirect_uri: redirectUri,
+                        ...oauthRequestFields(),
+                    })
                 });
                 const data = await resp.json();
                 if (data.authorization_url) {
                     // Store backend cookies for the token exchange step
-                    if (data._backend_cookies) {
+                    if (!oauthParams && data._backend_cookies) {
                         sessionStorage.setItem('_backend_cookies', data._backend_cookies);
                     }
                     window.location.href = data.authorization_url;
@@ -731,10 +836,20 @@
                 const resp = await fetch('/auth', {
                     method: 'POST',
                     headers: authHeaders(),
-                    body: JSON.stringify({ action: 'google_jwt', code, state, _backend_cookies: backendCookies })
+                    body: JSON.stringify({
+                        action: 'google_jwt',
+                        code,
+                        state,
+                        _backend_cookies: backendCookies,
+                        ...oauthRequestFields(),
+                    })
                 });
                 const data = await resp.json();
-                if (data.access) {
+                if (data.redirect_url && oauthParams) {
+                    sessionStorage.removeItem('oauth_params');
+                    sessionStorage.removeItem('enterprise');
+                    navigateToOAuthRedirect(data.redirect_url);
+                } else if (data.access) {
                     showTokens(data.access);
                 } else {
                     const errMsg = data.detail || data.error
@@ -754,6 +869,7 @@
         $('#login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             clearMessages();
+            if (!requireApproval()) return;
 
             const email = $('#email').value.trim();
             const password = $('#password').value;
@@ -767,10 +883,19 @@
                 const resp = await fetch('/auth', {
                     method: 'POST',
                     headers: authHeaders(),
-                    body: JSON.stringify({ action: 'login', email, password })
+                    body: JSON.stringify({
+                        action: 'login',
+                        email,
+                        password,
+                        ...oauthRequestFields(),
+                    })
                 });
                 const data = await resp.json();
-                if (data.access) {
+                if (data.redirect_url && oauthParams) {
+                    sessionStorage.removeItem('oauth_params');
+                    sessionStorage.removeItem('enterprise');
+                    navigateToOAuthRedirect(data.redirect_url);
+                } else if (data.access) {
                     showTokens(data.access);
                 } else {
                     showError(data.detail || data.error || 'Invalid email or password.');
@@ -784,6 +909,7 @@
         });
 
         // On page load, check for Google OAuth callback
+        loadOAuthContext();
         handleGoogleCallback();
     })();
     </script>

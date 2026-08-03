@@ -213,8 +213,91 @@ For custom API endpoints, set the `RESPAN_API_BASE_URL` environment variable:
 
 ```bash
 npm run build        # Compile TypeScript
-npm run watch        # Watch mode
 npm run stdio        # Build and run in stdio mode
+```
+
+### Local OAuth broker
+
+The repository includes a Vercel-independent HTTP harness for the public OAuth
+and MCP routes. It uses the existing local backend and Redis services; it does
+not start, restart, or clear either service.
+
+Create a gitignored `.env.local`:
+
+```dotenv
+OAUTH_SECRET=<locally-generated-random-secret-of-at-least-32-characters>
+OAUTH_SESSION_STORE=redis
+REDIS_URL=redis://127.0.0.1:6379/15
+MCP_REDIS_KEY_PREFIX=respan-mcp:local:
+MCP_PUBLIC_BASE_URL=http://127.0.0.1:3100
+MCP_ACCESS_TOKEN_TTL_SECONDS=60
+RESPAN_API_BASE_URL=http://127.0.0.1:8000/api
+
+# Used only by the complete local verification probe:
+OAUTH_TEST_EMAIL=<local-test-account-email>
+OAUTH_TEST_PASSWORD=<local-test-account-password>
+OAUTH_TEST_API_KEY=<local-test-api-key>
+```
+
+To exercise the same Upstash REST adapter used by Vercel, replace the local
+Redis settings with:
+
+```dotenv
+OAUTH_SESSION_STORE=upstash
+UPSTASH_REDIS_REST_URL=<upstash-rest-url>
+UPSTASH_REDIS_REST_TOKEN=<upstash-rest-token>
+```
+
+Keep the local key prefix distinct from Preview and Production. The probe
+always replaces it with a unique per-run prefix and deletes only those keys.
+
+Run the local service and the probe:
+
+```bash
+npm run dev:oauth
+npm run verify:oauth:local
+```
+
+To verify that refresh rotation does not extend an absolute refresh-session
+deadline, run the probe with a short local lifetime:
+
+```bash
+OAUTH_VERIFY_REFRESH_EXPIRY=true \
+MCP_REFRESH_SESSION_TTL_SECONDS=180 \
+npm run verify:oauth:local
+```
+
+The probe rotates the refresh token after the access token expires, waits until
+three minutes from the original session issuance, and then requires
+`invalid_grant` from the latest refresh token. This setting is for local
+verification only.
+
+The probe starts its own isolated harness on `127.0.0.1:3100`, uses a unique
+Redis key prefix, prints only step status and duration, and removes only keys
+under that unique prefix. Do not run `dev:oauth` simultaneously on the same
+port. Google login requires separately configured local backend credentials;
+the deterministic automated suite covers the broker behavior without them.
+
+Hosted OAuth client registrations accept HTTPS callbacks and HTTP callbacks
+bound to the literal loopback addresses `127.0.0.1` or `[::1]`. Other HTTP
+hosts, executable URL schemes, credentials, fragments, duplicate callbacks,
+and oversized callback lists are rejected.
+
+Vercel deployments require Upstash rather than the in-memory store. Production
+public and backend URLs must use HTTPS, and OAuth secrets and Redis credentials
+must be configured only through the deployment secret manager.
+
+For the complete Preview and Production setup, environment-variable matrix,
+Vercel service configuration, verification gate, monitoring, and rollback
+procedure, see [Public MCP OAuth Broker: Vercel Deployment Runbook](docs/vercel-oauth-deployment.md).
+
+Automated checks:
+
+```bash
+npm test
+TEST_REDIS_URL=redis://127.0.0.1:6379/15 npm test -- --run tests/redis-store.integration.test.ts
+npm run build
+git diff --check
 ```
 
 ---

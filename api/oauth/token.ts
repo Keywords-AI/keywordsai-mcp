@@ -1,87 +1,114 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createHash } from 'node:crypto';
-import { verifyAuthCode } from '../../lib/shared/oauth.js';
+import { OAuthBroker } from '../../lib/oauth/broker.js';
+import { getOAuthConfig } from '../../lib/oauth/config.js';
+import { OAuthRequestError, RateLimitError } from '../../lib/oauth/errors.js';
+import { enforceRateLimit } from '../../lib/oauth/rate-limit.js';
+import { getSessionStore } from '../../lib/oauth/store-factory.js';
+import { SessionStoreUnavailableError } from '../../lib/oauth/store.js';
 
 function parseBody(req: VercelRequest): Record<string, string> {
   const contentType = req.headers['content-type'] || '';
-
-  // Handle application/x-www-form-urlencoded
   if (contentType.includes('application/x-www-form-urlencoded')) {
     if (typeof req.body === 'string') {
-      const params: Record<string, string> = {};
-      for (const [k, v] of new URLSearchParams(req.body)) {
-        params[k] = v;
-      }
-      return params;
+      return Object.fromEntries(new URLSearchParams(req.body));
     }
-    // Vercel may have already parsed it as an object
     return req.body || {};
   }
-
-  // Handle JSON
   return req.body || {};
 }
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+function requestIp(req: VercelRequest): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  const value = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  return value?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+}
+
+function sendOAuthError(
+  res: VercelResponse,
+  error: string,
+  statusCode: number,
+): VercelResponse {
+  if (statusCode === 503 || statusCode === 429) {
+    res.setHeader('Retry-After', statusCode === 429 ? '60' : '5');
+  }
+  return res.status(statusCode).json({ error });
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, MCP-Protocol-Version');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
-  }
-
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return sendOAuthError(res, 'invalid_request', 405);
   }
 
+  const params = parseBody(req);
+  const config = getOAuthConfig();
+  const store = getSessionStore();
+  const broker = new OAuthBroker({ config, store });
   try {
-    const params = parseBody(req);
-    const { grant_type, code, code_verifier, client_id, redirect_uri } = params;
-
-    if (grant_type !== 'authorization_code') {
-      return res.status(400).json({ error: 'unsupported_grant_type' });
+    await enforceRateLimit(
+      store,
+      'platform',
+      'token-ip',
+      requestIp(req),
+      60,
+    );
+    if (params.client_id) {
+      await enforceRateLimit(
+        store,
+        'platform',
+        'token-client',
+        params.client_id,
+        60,
+      );
     }
 
-    if (!code || !code_verifier || !client_id || !redirect_uri) {
-      return res.status(400).json({ error: 'invalid_request', error_description: 'Missing required parameters' });
+    if (params.grant_type === 'authorization_code') {
+      if (
+        !params.code
+        || !params.code_verifier
+        || !params.client_id
+        || !params.redirect_uri
+      ) {
+        return sendOAuthError(res, 'invalid_request', 400);
+      }
+      const pair = await broker.exchangeAuthorizationCode({
+        code: params.code,
+        codeVerifier: params.code_verifier,
+        clientId: params.client_id,
+        redirectUri: params.redirect_uri,
+        resource: params.resource,
+      });
+      return res.status(200).json(pair);
     }
 
-    // Decrypt and verify the auth code
-    let authCode;
-    try {
-      authCode = verifyAuthCode(code);
-    } catch {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Invalid or expired authorization code' });
+    if (params.grant_type === 'refresh_token') {
+      if (!params.refresh_token || !params.client_id) {
+        return sendOAuthError(res, 'invalid_request', 400);
+      }
+      const pair = await broker.refresh({
+        refreshToken: params.refresh_token,
+        clientId: params.client_id,
+        resource: params.resource,
+      });
+      return res.status(200).json(pair);
     }
 
-    // Verify PKCE: base64url(SHA256(code_verifier)) === code_challenge
-    const expectedChallenge = createHash('sha256')
-      .update(code_verifier)
-      .digest('base64url');
-
-    if (expectedChallenge !== authCode.codeChallenge) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'PKCE verification failed' });
+    return sendOAuthError(res, 'unsupported_grant_type', 400);
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return sendOAuthError(res, 'temporarily_unavailable', 429);
     }
-
-    // Verify client_id matches
-    if (client_id !== authCode.clientId) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'client_id mismatch' });
+    if (error instanceof SessionStoreUnavailableError) {
+      return sendOAuthError(res, 'temporarily_unavailable', 503);
     }
-
-    // Verify redirect_uri matches
-    if (redirect_uri !== authCode.redirectUri) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' });
+    if (error instanceof OAuthRequestError) {
+      return sendOAuthError(res, error.oauthError, error.statusCode);
     }
-
-    // Return the JWT as the access token — works directly with existing Bearer token handling
-    return res.status(200).json({
-      access_token: authCode.jwt,
-      token_type: 'bearer',
-      expires_in: 86400,
-    });
-  } catch (err) {
-    console.error('Token exchange error:', err);
-    return res.status(500).json({ error: 'server_error' });
+    return sendOAuthError(res, 'temporarily_unavailable', 503);
   }
 }

@@ -80,6 +80,7 @@ export function verifyAuthCode(code: string): {
 export function createClientRegistration(
   clientId: string,
   redirectUris: string[],
+  clientName?: string,
 ): string {
   // Client registrations do not expire. A client_id is a public OAuth identifier
   // (RFC 7591), not a secret, and MCP clients cache it indefinitely without ever
@@ -91,12 +92,14 @@ export function createClientRegistration(
     type: 'client_reg',
     clientId,
     redirectUris,
+    ...(clientName ? { clientName } : {}),
   });
 }
 
 export function verifyClientRegistration(token: string): {
   clientId: string;
   redirectUris: string[];
+  clientName: string;
 } {
   const payload = decrypt(token);
   if (payload.type !== 'client_reg') {
@@ -110,5 +113,8 @@ export function verifyClientRegistration(token: string): {
   return {
     clientId: payload.clientId as string,
     redirectUris: payload.redirectUris as string[],
+    clientName: typeof payload.clientName === 'string' && payload.clientName.trim()
+      ? payload.clientName
+      : 'Previously registered MCP client',
   };
 }

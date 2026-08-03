@@ -1,49 +1,83 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyClientRegistration, createAuthCode } from '../../lib/shared/oauth.js';
+import { OAuthBroker } from '../../lib/oauth/broker.js';
+import { getOAuthConfig, type OAuthRealm } from '../../lib/oauth/config.js';
+import { OAuthRequestError } from '../../lib/oauth/errors.js';
+import { hashOpaqueToken } from '../../lib/oauth/crypto.js';
+import { getSessionStore } from '../../lib/oauth/store-factory.js';
+import { SessionStoreUnavailableError } from '../../lib/oauth/store.js';
+import {
+  clearBrowserCsrfCookie,
+  hasValidBrowserCsrfCookie,
+} from '../../lib/oauth/browser-csrf.js';
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+function getRealm(req: VercelRequest): OAuthRealm {
+  return req.query.enterprise === 'true' ? 'enterprise' : 'platform';
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method !== 'GET' && req.method !== 'DELETE') {
+    return res.status(405).json({ error: 'method_not_allowed' });
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  const transactionId = typeof req.query.transaction_id === 'string'
+    ? req.query.transaction_id
+    : '';
+  const csrf = typeof req.query.csrf === 'string' ? req.query.csrf : '';
+  if (!transactionId || !csrf) {
+    return res.status(400).json({ error: 'invalid_request' });
   }
 
+  const realm = getRealm(req);
   try {
-    const { jwt, client_id, redirect_uri, code_challenge, state } = req.body || {};
-
-    if (!jwt || !client_id || !redirect_uri || !code_challenge || !state) {
-      return res.status(400).json({ error: 'Missing required fields: jwt, client_id, redirect_uri, code_challenge, state' });
+    const config = getOAuthConfig();
+    if (!hasValidBrowserCsrfCookie(
+      req,
+      transactionId,
+      csrf,
+      config.publicBaseUrl.startsWith('https://'),
+    )) {
+      return res.status(400).json({ error: 'invalid_request' });
     }
-
-    // Validate client_id
-    if (!client_id.startsWith('enc_')) {
-      return res.status(400).json({ error: 'Invalid client_id' });
+    const store = getSessionStore();
+    const broker = new OAuthBroker({ config, store });
+    const pending = await broker.getPendingAuthorization(
+      realm,
+      transactionId,
+      csrf,
+    );
+    if (req.method === 'DELETE') {
+      await store.deletePendingAuthorization(realm, hashOpaqueToken(transactionId));
+      const callback = new URL(pending.value.redirectUri);
+      callback.searchParams.set('error', 'access_denied');
+      callback.searchParams.set('state', pending.value.clientState);
+      res.setHeader(
+        'Set-Cookie',
+        clearBrowserCsrfCookie(
+          transactionId,
+          config.publicBaseUrl.startsWith('https://'),
+        ),
+      );
+      return res.status(200).json({ redirect_url: callback.toString() });
     }
-
-    try {
-      const registration = verifyClientRegistration(client_id.slice(4));
-      if (!registration.redirectUris.includes(redirect_uri)) {
-        return res.status(400).json({ error: 'redirect_uri does not match registered URIs' });
-      }
-    } catch {
-      return res.status(400).json({ error: 'Invalid or expired client_id' });
+    return res.status(200).json({
+      client_name: pending.value.clientName,
+      redirect_uri: pending.value.redirectUri,
+      resource: pending.value.resource,
+    });
+  } catch (error) {
+    if (error instanceof SessionStoreUnavailableError) {
+      res.setHeader('Retry-After', '5');
+      return res.status(503).json({ error: 'temporarily_unavailable' });
     }
-
-    const code = createAuthCode(jwt, code_challenge, redirect_uri, client_id);
-
-    const callbackUrl = new URL(redirect_uri);
-    callbackUrl.searchParams.set('code', code);
-    callbackUrl.searchParams.set('state', state);
-
-    return res.status(200).json({ redirect_url: callbackUrl.toString() });
-  } catch (err) {
-    console.error('Code generation error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    if (error instanceof OAuthRequestError) {
+      return res.status(error.statusCode).json({ error: error.oauthError });
+    }
+    return res.status(400).json({ error: 'invalid_request' });
   }
 }
