@@ -105,6 +105,26 @@ Share this config with your team:
 
 ## Available Tools
 
+Tools come from two places.
+
+**Synced tools** are generated from the Respan backend's own tool registry, so
+their names, descriptions and parameter schemas match the in-product agent
+exactly. They live in `lib/generated/manifest.json` and use the backend's
+`noun_verb` naming (`log_list`, `trace_get`, `prompt_create`). Regenerate them
+with `scripts/generate_manifest.py`; see [Syncing the tool surface](#syncing-the-tool-surface).
+
+**Legacy tools** are the original hand-written set below, using `verb_noun`
+naming (`list_logs`, `get_trace_tree`). They are unchanged and still supported.
+Where a legacy tool and a synced tool cover the same endpoint, either works.
+The legacy set is expected to be retired once the sync reaches full coverage,
+which will be announced before it happens.
+
+Not every backend tool is exposed here. A tool is held back when its endpoint
+requires JWT authentication (an API key cannot call it), when its backend
+behaviour could not be verified mechanically, or when it is known to fail under
+API-key auth. Each held-back tool carries a machine-readable `excluded` reason
+in the manifest.
+
 ### Logs
 
 | Tool | Description |
@@ -208,6 +228,59 @@ For custom API endpoints, set the `RESPAN_API_BASE_URL` environment variable:
 **Private deployment:** Set `RESPAN_API_BASE_URL` in Vercel environment variables.
 
 ---
+
+## Organization scoping
+
+Every request this server makes carries `X-Respan-Agent-Scope: own-org`. This is
+a security invariant, not a setting.
+
+A token presented to this server may belong to a Respan staff member. Without
+that header such a token resolves to `is_superadmin()` on the backend and reads
+across organizations through `SuperAdminMixin`. The header makes the backend
+force `is_superadmin()` to false, so the request is served from the caller's own
+organization only. It can never raise privilege, only drop it.
+
+All three outbound transports set it: the generated SDK client (via constructor
+headers), `rawFetch`, and the synced-tool dispatcher. **Any new transport must
+set it too.** There is a check for exactly this:
+
+```bash
+npm run build:server && node scripts/verify-own-org-header.mjs
+```
+
+It runs one tool through each transport against a local server and exits
+non-zero if any request is missing the header.
+
+Note that this scopes a staff token down; it does not reject one. Refusing
+staff-owned credentials outright cannot be done here, because an API key cannot
+query its own privilege level (`/auth/users/me/` is JWT-only). That gate belongs
+on the backend and is tracked as a follow-up.
+
+## Syncing the tool surface
+
+`lib/generated/manifest.json` is generated, not hand-edited. It is produced from
+the backend's `utils.mcp.tool_bridge.register_tools`, which is the same registry
+the in-product agent uses, so the two surfaces cannot drift on tool names,
+descriptions or schemas.
+
+Routes are derived rather than written by hand. The generator invokes each
+backend executor with the HTTP layer stubbed and unique sentinel arguments, then
+inspects the request that would have been sent to learn where every argument
+belongs (URL segment, query parameter, or request body). A tool is registered
+only when every one of its arguments was located. Anything unresolved is
+recorded with a reason and left unregistered, so no tool is ever wired to a
+guessed endpoint.
+
+To regenerate, run against a backend checkout using its virtualenv:
+
+```bash
+cd <respan-backend>
+./.venv/bin/python <respan-mcp>/scripts/generate_manifest.py \
+    --out <respan-mcp>/lib/generated/manifest.json
+```
+
+The script prints how many tools were registered and why each remaining one was
+held back. Re-running it on an unchanged backend reproduces the file exactly.
 
 ## Local Development
 

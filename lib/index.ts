@@ -12,6 +12,7 @@ import { registerEvaluatorTools } from "./evaluate/evaluators.js";
 import { registerDatasetTools } from "./evaluate/datasets.js";
 import { registerEvaluationPipelineTools } from "./evaluate/pipelines.js";
 import { registerWorkflowTools } from "./develop/workflows.js";
+import { registerSyncedTools } from "./generated/register.js";
 
 async function main() {
   const auth = resolveAuthFromEnv();
@@ -36,6 +37,7 @@ async function main() {
   registerDatasetTools(server, client);
   registerEvaluationPipelineTools(server, client);
   registerWorkflowTools(server, client);
+  registerSyncedTools(server, client);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

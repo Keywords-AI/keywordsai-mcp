@@ -16,10 +16,47 @@ export interface AuthenticatedClient {
 
 const DEFAULT_BASE_URL = 'https://api.respan.ai';
 
+/**
+ * Pins every request to the caller's own organization.
+ *
+ * This is a security invariant of this package, not a tuning knob. A token
+ * presented here may belong to a Respan staff member, who would otherwise
+ * resolve to is_superadmin() server-side and read across organizations through
+ * SuperAdminMixin. The backend honours this header by forcing is_superadmin()
+ * to false (utils/mixins/view_mixins.py), which only ever drops privilege.
+ *
+ * It must be sent on EVERY outbound call. Both transports below set it: the
+ * generated SDK client via constructor headers, and rawFetch directly. Adding
+ * a third transport without it reopens cross-org access.
+ */
+const OWN_ORG_SCOPE_HEADER = 'X-Respan-Agent-Scope';
+const OWN_ORG_SCOPE_VALUE = 'own-org';
+
+/**
+ * Identifies traffic as coming from this server.
+ *
+ * This is a customer surface, so staff-owned credentials are not permitted and
+ * the backend refuses them when they carry this header. The check cannot run
+ * here: under API-key auth a caller cannot determine its own privilege level,
+ * so the server marks its traffic and the backend decides.
+ */
+const CLIENT_ID_HEADER = 'X-Respan-Client';
+const CLIENT_ID_VALUE = 'public-mcp';
+
+/** Sent on every outbound request. See both comments above. */
+export const OWN_ORG_SCOPE_HEADERS: Record<string, string> = {
+  [OWN_ORG_SCOPE_HEADER]: OWN_ORG_SCOPE_VALUE,
+  [CLIENT_ID_HEADER]: CLIENT_ID_VALUE,
+};
+
 export function createClient(auth: AuthConfig, baseUrl?: string): AuthenticatedClient {
   const resolvedBaseUrl = baseUrl || auth.baseUrl || DEFAULT_BASE_URL;
   return {
-    client: new RespanClient({ environment: resolvedBaseUrl }),
+    client: new RespanClient({
+      environment: resolvedBaseUrl,
+      // Covers every SDK-backed tool. rawFetch sets the same header itself.
+      headers: { ...OWN_ORG_SCOPE_HEADERS },
+    }),
     auth: `Bearer ${auth.token}`,
     baseUrl: resolvedBaseUrl,
   };
@@ -40,6 +77,7 @@ export async function rawFetch(
     headers: {
       'Content-Type': 'application/json',
       Authorization: client.auth,
+      ...OWN_ORG_SCOPE_HEADERS,
     },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
