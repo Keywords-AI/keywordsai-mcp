@@ -66,6 +66,36 @@ setTimeout(() => {
   const missing = REQUIRED.filter(n => !names.includes(n));
   if (missing.length) problems.push(`expected tools missing: ${missing.join(', ')}`);
 
+  // Descriptions are adopted from the backend, which documents tools this
+  // surface does not publish. Telling a client to call something absent reads
+  // as a broken server, so the generator scrubs those sentences — this catches
+  // any that a new description reintroduces.
+  const published = new Set(names);
+  const VERBS = ['list', 'get', 'create', 'update', 'delete', 'run', 'commit', 'deploy',
+    'undeploy', 'validate', 'summary', 'import', 'restore', 'init', 'now', 'history', 'search'];
+  const toolRef = new RegExp(`\\b([a-z]+(?:_[a-z]+)*_(?:${VERBS.join('|')}))\\b`, 'g');
+  const dangling = new Map();
+  for (const tool of msg.result.tools) {
+    const texts = [tool.description || ''];
+    for (const spec of Object.values(tool.inputSchema?.properties || {})) {
+      if (typeof spec?.description === 'string') texts.push(spec.description);
+    }
+    for (const text of texts) {
+      for (const [, ref] of text.matchAll(toolRef)) {
+        if (!published.has(ref)) {
+          if (!dangling.has(ref)) dangling.set(ref, new Set());
+          dangling.get(ref).add(tool.name);
+        }
+      }
+    }
+  }
+  if (dangling.size) {
+    problems.push(
+      'descriptions reference tools this surface does not publish: ' +
+      [...dangling].map(([ref, from]) => `${ref} (in ${[...from].slice(0, 3).join(', ')})`).join('; '),
+    );
+  }
+
   console.log(`tools advertised: ${names.length}`);
   const byNoun = {};
   for (const n of names) {

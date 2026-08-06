@@ -13,7 +13,7 @@
     "stdio": "npm run build:server && node dist/lib/index.js",
     "start": "node dist/lib/index.js",
     "clean": "rm -rf dist",
-    "verify": "npm run build:server && node scripts/verify-tool-naming.mjs && node scripts/verify-pagination-parity.mjs && node scripts/verify-own-org-header.mjs"
+    "verify": "npm run build:server && node scripts/verify-tool-naming.mjs && node scripts/verify-agent-parity.mjs && node scripts/verify-pagination-parity.mjs && node scripts/verify-own-org-header.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.48",

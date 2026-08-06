@@ -8,23 +8,32 @@ export function registerPromptTools(server: McpServer, client: AuthenticatedClie
   // 1. List all Prompts
   server.tool(
     "prompt_list",
-    "List prompts for an organization (PAGINATED, default 20/page). Use for: browsing prompts, finding a prompt by name, or getting prompt_id values for other prompt tools. RETURNS per entry: prompt_id (string like 'prm_abc123'), name, description, tags, version (current draft version number), prompt_live_version_number (deployed version number, null if never deployed), is_read_only, model, message_count, system_preview. SCOPE: these fields describe where the prompt stands RIGHT NOW. This tool cannot answer anything about version history — how many versions exist, what an earlier version contained, or what changed between two. Use prompt_versions_list for history and prompt_version_get for a specific version's content. IMPORTANT: Always use prompt_id (string like 'prm_abc123') for all subsequent calls — never use the integer id.",
+    "List prompts for an organization (PAGINATED, default 5/page). Use for: browsing prompts, finding a prompt by name, or getting prompt_id values for other prompt tools. RETURNS per entry: prompt_id (string like 'prm_abc123'), name, description, tags, version (current draft version number), prompt_live_version_number (deployed version number, null if never deployed), is_read_only, model, message_count, system_preview. SCOPE: these fields describe where the prompt stands RIGHT NOW. This tool cannot answer anything about version history — how many versions exist, what an earlier version contained, or what changed between two. Use prompt_versions_list for history and prompt_version_get for a specific version's content. IMPORTANT: Always use prompt_id (string like 'prm_abc123') for all subsequent calls — never use the integer id.",
     {
       name: z.string().optional().describe("Filter by prompt name (contains)"),
+      is_deleted: z
+        .boolean()
+        .optional()
+        .describe("Set true to list SOFT-DELETED prompts (the trash) instead of active ones. Deleted prompts are hidden by default. This is the only way to find a trashed prompt's prompt_id for prompt_trash_restore."),
       ...paginationShape("prompt_list"),
       sort_by: z
         .enum(["-id", "current_version__updated_at"])
         .optional()
         .describe("Sort field. Default: -id (newest first)."),
     },
-    async ({ name, page_size, page, sort_by }) => {
+    async ({ name, is_deleted, page_size, page, sort_by }) => {
       const c = requireClient(client);
+      // Both are server-side filters, not top-level fields. Declaring either
+      // without this mapping would silently return unfiltered results.
+      // is_deleted is virtual: the view pops it out of the filter payload and
+      // turns it into a deleted_at query before the filter engine runs.
+      const filters: Record<string, { operator: string; value: unknown }> = {};
+      if (name) filters.name = { operator: "icontains", value: [name] };
+      if (is_deleted !== undefined) filters.is_deleted = { operator: "", value: is_deleted };
       const data = await c.client.prompts.listPrompts({
         Authorization: c.auth,
         ...clampPagination("prompt_list", { page, page_size }),
-        // Name is a server-side filter, not a top-level field. Declaring it
-        // without this mapping would silently return unfiltered results.
-        ...(name ? { filters: { name: { operator: "icontains", value: [name] } } } : {}),
+        ...(Object.keys(filters).length ? { filters } : {}),
         ...(sort_by ? { sort_by } : {}),
       });
 

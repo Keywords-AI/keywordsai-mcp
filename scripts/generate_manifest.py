@@ -232,19 +232,43 @@ _INTERNAL_PATTERNS = (
 )
 
 
+# Tool names that appear in backend descriptions but exist on no published
+# surface. Left alone they instruct a client to call something that is not
+# there, which reads as a broken server rather than a stale sentence.
+#
+# A rename is rewritten. A reference to an internal-only mechanism, or to a tool
+# that exists nowhere, has its sentence dropped by _DANGLING_TOOL_SENTENCES.
+_RENAMED_TOOL_REFERENCES = {}
+
+# Sentences mentioning these are dropped wholesale: there is no correct
+# replacement to point a caller at.
+_DANGLING_TOOL_SENTENCES = (
+    # The in-product agent loads tools on demand through this; no client-facing
+    # equivalent exists, so the instruction cannot be followed here.
+    re.compile(r"\btool_search\b"),
+    # evaluator_run_now points at this to cancel or resume a run, but the op is
+    # not in the agent registry, so no surface publishes it. Reported upstream;
+    # drop this rule once the backend description stops naming it.
+    re.compile(r"\bevaluator_run_update\b"),
+)
+
+
 def _sentences(text: str) -> list:
     """Split on sentence and bullet boundaries, keeping the separators."""
     return re.split(r"(?<=[.!?])\s+|\n", text)
 
 
 def scrub_internal(text: str) -> str:
-    """Drop any sentence that names internal infrastructure."""
+    """Drop any sentence naming internal infrastructure or an absent tool."""
     if not text:
         return text
+    for stale, current in _RENAMED_TOOL_REFERENCES.items():
+        text = re.sub(rf"\b{re.escape(stale)}\b", current, text)
     kept = [
         part
         for part in _sentences(text)
         if not any(pattern.search(part) for pattern in _INTERNAL_PATTERNS)
+        and not any(pattern.search(part) for pattern in _DANGLING_TOOL_SENTENCES)
     ]
     cleaned = " ".join(part.strip() for part in kept if part.strip())
     return re.sub(r"\s{2,}", " ", cleaned).strip()

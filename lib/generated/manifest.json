@@ -226,7 +226,7 @@
   },
   {
    "name": "api_key_rank_by_usage",
-   "description": "Get top API keys ranked by a metric. Each result: organization_key_id, organization_key_name, number_of_requests, total_cost (USD), total_tokens, avg_latency (seconds), error_count. Only keys that appear in logs for the time range. This RANKS keys by traffic \u2014 it is NOT a key listing. To list or inspect the org's API keys themselves (names, masked values, settings, created-by) use api_key_list (deferred; tool_search for it). PROVIDER-SCOPED QUESTIONS (user names Anthropic/OpenAI/Google/etc.): you MUST pass filters={\"provider_id\": {\"operator\": \"\", \"value\": \"<provider>\"}}. Without this filter, the result is top keys across ALL providers \u2014 wrong answer for a provider-scoped question. The filter IS supported (see the `filters` parameter).",
+   "description": "Get top API keys ranked by a metric. Each result: organization_key_id, organization_key_name, number_of_requests, total_cost (USD), total_tokens, avg_latency (seconds), error_count. Only keys that appear in logs for the time range. This RANKS keys by traffic \u2014 it is NOT a key listing. PROVIDER-SCOPED QUESTIONS (user names Anthropic/OpenAI/Google/etc.): you MUST pass filters={\"provider_id\": {\"operator\": \"\", \"value\": \"<provider>\"}}. Without this filter, the result is top keys across ALL providers \u2014 wrong answer for a provider-scoped question. The filter IS supported (see the `filters` parameter).",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1003,7 +1003,7 @@
   },
   {
    "name": "dashboard_active_users",
-   "description": "Get active user metrics. Returns: summary (active_users count, total_user_cost USD, average_cost_per_user USD) plus activity \u2014 time-bucketed rows each with active_users, total_cost, average_cost_per_user. Measures USER activity counts only \u2014 for latency/error/cost totals use dashboard_llm_metrics_summary. active_users is a DISTINCT count per bucket, so it cannot be summed, averaged or maxed across buckets into a total for the range \u2014 the same user recurs in many buckets. Only `summary.active_users` is the distinct count for the whole range. If the buckets are finer than the question (hourly rows for a per-day ask), re-request at the right interval rather than folding the rows yourself, and say which interval was measured. USERS here means the END USERS of your LLM application (customer_identifier tags), never the humans in your Respan organization \u2014 org members, roles and pending invites live in team_member_list (deferred; tool_search for it).",
+   "description": "Get active user metrics. Returns: summary (active_users count, total_user_cost USD, average_cost_per_user USD) plus activity \u2014 time-bucketed rows each with active_users, total_cost, average_cost_per_user. Measures USER activity counts only \u2014 for latency/error/cost totals use dashboard_llm_metrics_summary. active_users is a DISTINCT count per bucket, so it cannot be summed, averaged or maxed across buckets into a total for the range \u2014 the same user recurs in many buckets. Only `summary.active_users` is the distinct count for the whole range. If the buckets are finer than the question (hourly rows for a per-day ask), re-request at the right interval rather than folding the rows yourself, and say which interval was measured.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1705,7 +1705,7 @@
   },
   {
    "name": "dashboard_total_users",
-   "description": "Get cumulative total_users count for the time range. Filters are NOT supported by this endpoint. USERS here means the END USERS of your LLM application (customer_identifier tags), never the humans in your Respan organization \u2014 org members, roles and pending invites live in team_member_list (deferred; tool_search for it).",
+   "description": "Get cumulative total_users count for the time range. Filters are NOT supported by this endpoint.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -2118,7 +2118,7 @@
   },
   {
    "name": "end_user_rank_by_usage",
-   "description": "Get top users (customer_identifier) ranked by a metric. Each result: customer_identifier, name/email (if available), number_of_requests, total_cost (USD), total_tokens, avg_latency (seconds), error_count. Only users that appear in logs for the time range. USERS here means the END USERS of your LLM application (customer_identifier tags), never the humans in your Respan organization \u2014 org members, roles and pending invites live in team_member_list (deferred; tool_search for it). PROVIDER-SCOPED QUESTIONS (user names Anthropic/OpenAI/Google/etc.): you MUST pass filters={\"provider_id\": {\"operator\": \"\", \"value\": \"<provider>\"}}. Without this filter, the result is top users across ALL providers. The filter IS supported.",
+   "description": "Get top users (customer_identifier) ranked by a metric. Each result: customer_identifier, name/email (if available), number_of_requests, total_cost (USD), total_tokens, avg_latency (seconds), error_count. Only users that appear in logs for the time range. PROVIDER-SCOPED QUESTIONS (user names Anthropic/OpenAI/Google/etc.): you MUST pass filters={\"provider_id\": {\"operator\": \"\", \"value\": \"<provider>\"}}. Without this filter, the result is top users across ALL providers. The filter IS supported.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -2541,7 +2541,7 @@
   },
   {
    "name": "evaluator_run_now",
-   "description": "An evaluator is the user-visible grading resource, composed of one or more graders (see the grader_* tools for the building blocks). This is the data on the Evaluators page. Execute a evaluator manually, NOW, with a caller-supplied event payload. Runs tasks for real \u2014 evals score, notifications send, webhooks fire, and LLM tasks cost money. You MUST ask the user to confirm the run and pass the exact evaluator name as user_confirmation. evaluator_id is the FAMILY evaluator_id; append ':<version>' (integer version number) to run a specific version. Without a version suffix the deployed version runs, falling back to the latest draft \u2014 manual runs do NOT require the evaluator to be deployed. RETURNS on sync completion: {status: 'completed', results}. Workflows with async steps (wait/human tasks) return {status: 'paused', workflow_run_id, paused_at_step} \u2014 resume or cancel later with evaluator_run_update using that workflow_run_id.",
+   "description": "An evaluator is the user-visible grading resource, composed of one or more graders (see the grader_* tools for the building blocks). This is the data on the Evaluators page. Execute a evaluator manually, NOW, with a caller-supplied event payload. Runs tasks for real \u2014 evals score, notifications send, webhooks fire, and LLM tasks cost money. You MUST ask the user to confirm the run and pass the exact evaluator name as user_confirmation. evaluator_id is the FAMILY evaluator_id; append ':<version>' (integer version number) to run a specific version. Without a version suffix the deployed version runs, falling back to the latest draft \u2014 manual runs do NOT require the evaluator to be deployed. RETURNS on sync completion: {status: 'completed', results}.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -3101,7 +3101,7 @@
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 1 argument(s) unmapped: page_size"
+   "excluded": "route not machine-verified; needs a hand-written spec"
   },
   {
    "name": "experiment_logs_summary",
@@ -4854,7 +4854,7 @@
   },
   {
    "name": "prompt_delete",
-   "description": "Soft-delete a prompt (moves to trash for 30 days). You MUST ask the user to type out the exact prompt name they want to delete, then pass their response as user_confirmation. Use prompt_trash_list to see deleted prompts, prompt_trash_restore to recover.",
+   "description": "Soft-delete a prompt (moves to trash for 30 days). You MUST ask the user to type out the exact prompt name they want to delete, then pass their response as user_confirmation. Use prompt_list(is_deleted=true) to see deleted prompts, prompt_trash_restore to recover.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -5065,6 +5065,10 @@
       "type": "string",
       "description": "Filter by prompt name (contains)"
      },
+     "is_deleted": {
+      "type": "boolean",
+      "description": "Set true to list SOFT-DELETED prompts (the trash) instead of active ones. Deleted prompts are hidden by default. This is the only way to find a trashed prompt's prompt_id for prompt_trash_restore."
+     },
      "page": {
       "type": "integer",
       "minimum": 1,
@@ -5073,8 +5077,8 @@
      "page_size": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 50,
-      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
+      "maximum": 10,
+      "description": "Rows per page (default 5, max 10). Larger values are clamped to 10, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -5085,7 +5089,7 @@
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 1 argument(s) unmapped: page_size"
+   "excluded": "route verified but 2 argument(s) unmapped: is_deleted, page_size"
   },
   {
    "name": "prompt_permanent_delete",

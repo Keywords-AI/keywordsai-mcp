@@ -54,6 +54,10 @@ const OVERRIDES: Record<string, [number, number]> = {
   thread_list: [HEAVY_PAGE_SIZE_DEFAULT, HEAVY_PAGE_SIZE_MAX],
   dataset_logs_list: [HEAVY_PAGE_SIZE_DEFAULT, HEAVY_PAGE_SIZE_MAX],
   experiment_logs_list: [HEAVY_PAGE_SIZE_DEFAULT, HEAVY_PAGE_SIZE_MAX],
+  // The upstream response carries version objects with full messages before
+  // they are stripped, so this is a heavy row even though a prompt reads like
+  // a config resource.
+  prompt_list: [HEAVY_PAGE_SIZE_DEFAULT, HEAVY_PAGE_SIZE_MAX],
   model_list: [PAGE_SIZE_DEFAULT, CATALOG_PAGE_SIZE_MAX],
   pulse_incidents_list: [50, CATALOG_PAGE_SIZE_MAX],
 };

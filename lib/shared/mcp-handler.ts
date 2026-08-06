@@ -12,6 +12,12 @@ import { registerEvaluatorTools } from '../evaluate/evaluators.js';
 import { registerDatasetTools } from '../evaluate/datasets.js';
 import { registerEvaluationPipelineTools } from '../evaluate/pipelines.js';
 import { registerWorkflowTools } from '../develop/workflows.js';
+import { registerLifecycleTools } from '../develop/lifecycle.js';
+import { registerDashboardTools } from '../observe/dashboard.js';
+import { registerTelemetryTools } from '../observe/telemetry.js';
+import { registerPulseTools } from '../observe/pulse.js';
+import { registerPlatformConfigTools } from '../platform/config.js';
+import { registerAccountTools } from '../platform/account.js';
 import { recordRegisteredNames, registerSyncedTools } from '../generated/register.js';
 
 function createServer(client: AuthenticatedClient | null, enabledTools?: Set<string>): McpServer {
@@ -42,6 +48,12 @@ function createServer(client: AuthenticatedClient | null, enabledTools?: Set<str
   registerDatasetTools(server, client);
   registerEvaluationPipelineTools(server, client);
   registerWorkflowTools(server, client);
+  registerLifecycleTools(server, client);
+  registerDashboardTools(server, client);
+  registerTelemetryTools(server, client);
+  registerPulseTools(server, client);
+  registerPlatformConfigTools(server, client);
+  registerAccountTools(server, client);
   registerSyncedTools(server, client, handWritten);
 
   return server;
