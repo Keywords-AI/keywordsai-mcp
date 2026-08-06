@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AuthenticatedClient } from "../shared/client.js";
 import { requireClient, rawFetch } from "../shared/client.js";
 import { clampPagination, paginationShape } from "../shared/pagination.js";
+import { backendDescription } from "../generated/descriptions.js";
 
 /**
  * Typed-noun tools over the shared /api/workflows/ resource.
@@ -20,11 +21,19 @@ type WorkflowOp =
   | "get"
   | "create"
   | "update"
+  | "delete"
   | "version_list"
+  | "version_create"
   | "commit"
   | "deploy"
   | "undeploy"
-  | "validate";
+  | "validate"
+  | "run_now"
+  | "run_history"
+  | "runs_time_series"
+  | "eval_run_history"
+  | "eval_scores_summary"
+  | "eval_scores_time_series";
 
 interface NounSpec {
   /** Tool-name prefix and id-parameter prefix, e.g. "monitor" -> monitor_get, monitor_id. */
@@ -33,24 +42,48 @@ interface NounSpec {
   type: string;
   /** Singular human label used in adapted descriptions. */
   label: string;
+  /**
+   * Pinned `scope` for the eval-score reads. Automations stamp their own id on
+   * each graded row, so their scores are matched by caller rather than by
+   * evaluator version. Evaluators use the endpoint default and omit it.
+   */
+  evalScope?: "automation";
   ops: WorkflowOp[];
 }
 
+/** CRUD, lifecycle and run-history surface every noun owns. */
 const FULL_OPS: WorkflowOp[] = [
   "list",
   "get",
   "create",
   "update",
+  "delete",
   "version_list",
+  "version_create",
   "commit",
   "deploy",
   "undeploy",
   "validate",
+  "run_history",
+  "runs_time_series",
+];
+
+/** Only graded surfaces produce eval scores: automations and evaluators. */
+const EVAL_OPS: WorkflowOp[] = [
+  "eval_run_history",
+  "eval_scores_summary",
+  "eval_scores_time_series",
 ];
 
 const NOUNS: NounSpec[] = [
   { noun: "monitor", type: "monitors", label: "monitor", ops: FULL_OPS },
-  { noun: "automation", type: "automations", label: "automation", ops: FULL_OPS },
+  {
+    noun: "automation",
+    type: "automations",
+    label: "automation",
+    evalScope: "automation",
+    ops: [...FULL_OPS, ...EVAL_OPS],
+  },
   { noun: "report", type: "reports", label: "report", ops: FULL_OPS },
   // evaluator_create / _list / _get / _update are registered by
   // lib/evaluate/pipelines.ts. The SDK overwrites a same-named tool without
@@ -59,7 +92,19 @@ const NOUNS: NounSpec[] = [
     noun: "evaluator",
     type: "evaluators",
     label: "evaluator",
-    ops: ["version_list", "commit", "deploy", "undeploy", "validate"],
+    ops: [
+      "delete",
+      "version_list",
+      "version_create",
+      "commit",
+      "deploy",
+      "undeploy",
+      "validate",
+      "run_now",
+      "run_history",
+      "runs_time_series",
+      ...EVAL_OPS,
+    ],
   },
 ];
 
@@ -138,7 +183,10 @@ const ADAPTED_DESCRIPTIONS: Partial<Record<WorkflowOp, (spec: NounSpec) => strin
 
 function descriptionFor(name: string, spec: NounSpec, op: WorkflowOp): string {
   const adapt = ADAPTED_DESCRIPTIONS[op];
-  return DESCRIPTIONS[name] ?? (adapt ? adapt(spec) : "");
+  // backendDescription is the generated text for the same tool name. Preferring
+  // it over a new local copy keeps added ops in step with the backend through
+  // regeneration alone. DESCRIPTIONS still wins where it is already present.
+  return DESCRIPTIONS[name] ?? backendDescription(name) ?? (adapt ? adapt(spec) : "");
 }
 
 const TRIGGER_EVENT_TYPES = [
@@ -217,6 +265,56 @@ function readIdArg(args: Record<string, unknown>, spec: NounSpec): string {
   return typeof value === "string" ? value : String(value);
 }
 
+const WORKFLOW_PATH = "/api/workflows";
+const WORKFLOW_RUNS_PATH = "/api/workflow-runs";
+/**
+ * Run-history and eval-score reads live on the ClickHouse metrics routes, which
+ * carry NO trailing slash. Appending one bounces through an APPEND_SLASH
+ * redirect that drops the query string, so the window silently becomes unbounded.
+ */
+const METRICS_PATH = "/clickhouse/workflows";
+
+/** Same envelope the backend returns, so a caller reads one error shape. */
+function errorResult(code: string, message: string) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify({ error: code, message }, null, 2) }],
+  };
+}
+
+/** Split 'family:3' into ['family', 3]; a bare id yields a null version. */
+function splitVersionedId(raw: string): [string, number | null] {
+  const at = raw.lastIndexOf(":");
+  if (at === -1) return [raw, null];
+  const version = Number(raw.slice(at + 1));
+  return Number.isInteger(version) ? [raw.slice(0, at), version] : [raw, null];
+}
+
+interface MetricsEndpoint {
+  path: string;
+  /** Honors limit/offset. */
+  isPaginated?: boolean;
+  /** Honors time_tick. */
+  isBucketed?: boolean;
+  /** Honors scope — pinned per noun, never exposed as an argument. */
+  isEvalScoped?: boolean;
+  /** Honors version_id. */
+  isVersionScoped?: boolean;
+}
+
+const METRICS_ENDPOINTS: Record<string, MetricsEndpoint> = {
+  run_history: { path: "runs/list", isPaginated: true },
+  // Named runs/summary but returns one row per bucket, not a single total.
+  runs_time_series: { path: "runs/summary", isBucketed: true, isVersionScoped: true },
+  eval_run_history: { path: "eval-runs", isPaginated: true, isEvalScoped: true },
+  eval_scores_summary: { path: "eval-scores", isEvalScoped: true },
+  eval_scores_time_series: {
+    path: "eval-scores/time-series",
+    isBucketed: true,
+    isEvalScoped: true,
+    isVersionScoped: true,
+  },
+};
+
 type Registrar = (
   server: McpServer,
   client: AuthenticatedClient | null,
@@ -224,6 +322,76 @@ type Registrar = (
   name: string,
   description: string
 ) => void;
+
+/**
+ * One registrar for all five metrics reads.
+ *
+ * Only the arguments the endpoint honors are exposed, and only those are sent,
+ * so an argument can never be accepted here and then silently dropped.
+ */
+function metricsRegistrar(op: string): Registrar {
+  const endpoint = METRICS_ENDPOINTS[op];
+  return (server, client, spec, name, description) => {
+    // The endpoint 400s on version_id together with scope=automation: the id is
+    // the automation's, so an evaluator version can only mislead. Rather than
+    // advertise an argument that always fails, drop it for that pairing.
+    const exposesVersionId =
+      endpoint.isVersionScoped && !(endpoint.isEvalScoped && spec.evalScope === "automation");
+
+    server.tool(
+      name,
+      description,
+      {
+        [`${spec.noun}_id`]: z
+          .string()
+          .describe(
+            `Family ${spec.noun}_id (UUID) — the ${spec.noun}_id field from ${spec.noun}_list or ${spec.noun}_get, NOT the version PK (id). A version PK returns an empty result rather than an error.`
+          ),
+        start_time: z.string().describe("Start time (ISO 8601). Required."),
+        end_time: z.string().describe("End time (ISO 8601). Required."),
+        ...(endpoint.isPaginated
+          ? {
+              limit: z.number().int().optional().describe("Max rows to return (default: 100, capped at 500)."),
+              offset: z.number().int().optional().describe("Rows to skip (pagination)."),
+            }
+          : {}),
+        ...(endpoint.isBucketed
+          ? { time_tick: z.enum(["minute", "hour", "day"]).optional().describe("Time bucket grain (default: hour).") }
+          : {}),
+        ...(exposesVersionId
+          ? {
+              version_id: z
+                .string()
+                .optional()
+                .describe(`Narrow to a single ${spec.label} version (the version PK). Omit for the whole family.`),
+            }
+          : {}),
+      },
+      async (args) => {
+        const c = requireClient(client);
+        const q = new URLSearchParams();
+        q.set("start_time", String(args.start_time));
+        q.set("end_time", String(args.end_time));
+        if (endpoint.isPaginated) {
+          if (args.limit !== undefined) q.set("limit", String(args.limit));
+          if (args.offset !== undefined) q.set("offset", String(args.offset));
+        }
+        if (endpoint.isBucketed && args.time_tick) q.set("time_tick", String(args.time_tick));
+        if (endpoint.isEvalScoped && spec.evalScope) q.set("scope", spec.evalScope);
+        if (exposesVersionId && args.version_id) q.set("version_id", String(args.version_id));
+
+        const data = await rawFetch(
+          c,
+          `${METRICS_PATH}/${readIdArg(args, spec)}/${endpoint.path}?${q.toString()}`,
+          { method: "GET" }
+        );
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+        };
+      }
+    );
+  };
+}
 
 const REGISTRARS: Record<WorkflowOp, Registrar> = {
   list: (server, client, spec, name, description) => {
@@ -473,6 +641,145 @@ const REGISTRARS: Record<WorkflowOp, Registrar> = {
       }
     );
   },
+
+  delete: (server, client, spec, name, description) => {
+    server.tool(
+      name,
+      description,
+      {
+        ...idField(spec),
+        user_confirmation: z
+          .string()
+          .describe(`REQUIRED: The exact ${spec.label} name as typed by the user. Must match exactly.`),
+      },
+      async (args) => {
+        const c = requireClient(client);
+        const id = readIdArg(args, spec);
+        // Confirm against the stored name before deleting. The argument is
+        // worthless as a safety gate unless something compares it.
+        const existing = (await rawFetch(c, `${WORKFLOW_PATH}/${id}/`, { method: "GET" })) as { name?: string } | null;
+        if (!existing || typeof existing !== "object") {
+          return errorResult("not_found", `Could not fetch ${spec.label} ${id}. Verify the ${spec.noun}_id is correct.`);
+        }
+        const actualName = existing.name ?? "";
+        if (args.user_confirmation !== actualName) {
+          return errorResult(
+            "confirmation_failed",
+            `You typed '${args.user_confirmation}' but the ${spec.label} name is '${actualName}'. Ask the user to type the exact name again. Nothing was deleted.`
+          );
+        }
+        await rawFetch(c, `${WORKFLOW_PATH}/${id}/`, { method: "DELETE" });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ deleted: true, [`${spec.noun}_id`]: id, name: actualName }, null, 2) }],
+        };
+      }
+    );
+  },
+
+  version_create: (server, client, spec, name, description) => {
+    server.tool(
+      name,
+      description,
+      {
+        ...idField(spec),
+        name: z.string().optional().describe("Version name (optional, copies from previous)."),
+        description: z.string().optional().describe("Version description."),
+        tasks: z
+          .array(TASK_SCHEMA)
+          .optional()
+          .describe("Task list for the new version (optional, copies from previous if omitted)."),
+      },
+      async (args) => {
+        const c = requireClient(client);
+        const body: Record<string, unknown> = {};
+        if (args.name !== undefined) body.name = args.name;
+        if (args.description !== undefined) body.description = args.description;
+        if (args.tasks !== undefined) body.tasks = args.tasks;
+        const data = await rawFetch(c, `${WORKFLOW_PATH}/${readIdArg(args, spec)}/versions/`, {
+          method: "POST",
+          body,
+        });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+        };
+      }
+    );
+  },
+
+  run_now: (server, client, spec, name, description) => {
+    server.tool(
+      name,
+      description,
+      {
+        [`${spec.noun}_id`]: z
+          .string()
+          .describe(`Family ${spec.noun}_id (UUID), optionally versioned as '<${spec.noun}_id>:<version number>'.`),
+        payload: z
+          .record(z.any())
+          .optional()
+          .describe(`Event payload the run executes against (becomes the 'event' namespace tasks read). Omit for ${spec.label}s that don't read event fields.`),
+        event_type: z
+          .string()
+          .optional()
+          .describe(`Optional event type to stamp on the run (see ${spec.noun}_create trigger_event_type values).`),
+        user_confirmation: z
+          .string()
+          .describe(`REQUIRED: The exact ${spec.label} name as typed by the user. Must match exactly.`),
+      },
+      async (args) => {
+        const c = requireClient(client);
+        const rawId = readIdArg(args, spec);
+        // Confirm against the version that will actually execute. The family
+        // detail prefers a draft while an unversioned run prefers the deployed
+        // version, so confirming the family row alone can authorize a
+        // different task graph from the one that runs.
+        const [familyId, pinnedVersion] = splitVersionedId(rawId);
+        let executionId = rawId;
+        let info: { name?: string } | null;
+        if (pinnedVersion !== null) {
+          info = (await rawFetch(c, `${WORKFLOW_PATH}/${familyId}/versions/${pinnedVersion}/`, { method: "GET" })) as { name?: string } | null;
+        } else {
+          const family = (await rawFetch(c, `${WORKFLOW_PATH}/${familyId}/`, { method: "GET" })) as
+            | { name?: string; deployed_version?: number | null; version?: number | null }
+            | null;
+          if (!family || typeof family !== "object") {
+            return errorResult("not_found", `Could not fetch ${spec.label} ${familyId}. Verify the ${spec.noun}_id is correct.`);
+          }
+          const selected = family.deployed_version ?? family.version ?? null;
+          if (typeof selected !== "number") {
+            return errorResult("invalid_response", `${spec.label} '${familyId}' did not return a valid version number.`);
+          }
+          info = family.deployed_version != null
+            ? ((await rawFetch(c, `${WORKFLOW_PATH}/${familyId}/versions/${selected}/`, { method: "GET" })) as { name?: string } | null)
+            : family;
+          executionId = `${familyId}:${selected}`;
+        }
+        if (!info || typeof info !== "object") {
+          return errorResult("not_found", `Could not fetch ${spec.label} ${familyId}. Verify the ${spec.noun}_id is correct.`);
+        }
+        const actualName = info.name ?? "";
+        if (args.user_confirmation !== actualName) {
+          return errorResult(
+            "confirmation_failed",
+            `You typed '${args.user_confirmation}' but the ${spec.label} name is '${actualName}'. Ask the user to type the exact name again. Nothing was run.`
+          );
+        }
+        const body: Record<string, unknown> = { workflow_id: executionId };
+        if (args.payload !== undefined) body.payload = args.payload;
+        if (args.event_type) body.event_type = args.event_type;
+        const data = await rawFetch(c, `${WORKFLOW_RUNS_PATH}/`, { method: "POST", body });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+        };
+      }
+    );
+  },
+
+  run_history: metricsRegistrar("run_history"),
+  runs_time_series: metricsRegistrar("runs_time_series"),
+  eval_run_history: metricsRegistrar("eval_run_history"),
+  eval_scores_summary: metricsRegistrar("eval_scores_summary"),
+  eval_scores_time_series: metricsRegistrar("eval_scores_time_series"),
 };
 
 export function registerWorkflowTools(
