@@ -107,6 +107,13 @@ export function registerLogTools(server: McpServer, client: AuthenticatedClient 
 
       // Convenience params fold into the same { field: { operator, value } } body map as `filters`
       const bodyFilters: Record<string, any> = { ...(filters || {}) };
+      // Exclude logs with no API key (some OTLP-ingested spans) so counts match
+      // the dashboard Requests metric, which is what people compare against.
+      // The description documents the override; a caller-supplied
+      // organization_key_id filter wins because `filters` is spread first.
+      if (!("organization_key_id" in bodyFilters)) {
+        bodyFilters.organization_key_id = { operator: "not_empty", value: "" };
+      }
       if (model) bodyFilters.model = { operator: "icontains", value: model };
       if (status) bodyFilters.status = { operator: "", value: status };
       if (customer_identifier) bodyFilters.customer_identifier = { operator: "", value: customer_identifier };
