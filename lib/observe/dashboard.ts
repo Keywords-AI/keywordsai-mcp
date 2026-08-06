@@ -42,7 +42,6 @@ const TOP_BREAKDOWN_DEFAULT_LIMIT = 10;
  */
 const SIMPLE_POST: Record<string, string> = {
   dashboard_llm_metrics_summary: 'llm-metrics/summary',
-  dashboard_active_users: 'users',
   dashboard_quantiles_summary: 'quantiles/summary',
 };
 

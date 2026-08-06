@@ -36,6 +36,9 @@ const CHART_TOOLS = Object.fromEntries(
     'dashboard_storage_volume_over_time',
     'dashboard_eval_results_over_time',
     'dashboard_metric_chart',
+    // Returns a time-bucketed `activity` array alongside its summary, so it is
+    // the same plot-shaped read as the rest of this list.
+    'dashboard_active_users',
   ].map(name => [name, CHART_REASON]),
 );
 
