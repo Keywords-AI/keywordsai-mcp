@@ -105,6 +105,32 @@ Share this config with your team:
 
 ## Available Tools
 
+**The server registers three tools, not 155.** An MCP client loads every
+registered tool's description before it can make a call, and the full surface is
+about 56k tokens of definitions — spent before you ask anything. So the tools are
+discovered on demand instead:
+
+| Tool | What it does |
+| --- | --- |
+| `tool_search` | Which tools exist. Call it with a `group` to list that group, or a `query` to search by keyword. Its description lists all 27 groups with example tool names. |
+| `tool_schema` | The full argument schema for one or more tools. Optional — skip it if the arguments are obvious. |
+| `tool_execute` | Run a tool by name. Arguments are validated first, so a mistake comes back naming the bad field. |
+
+A typical exchange:
+
+```
+tool_search({ query: "how much did we spend" })
+  -> log_usage, api_key_rank_by_usage, end_user_rank_by_usage
+
+tool_schema({ tools: ["log_usage"] })
+  -> { start_time, end_time, filters }
+
+tool_execute({ tool: "log_usage", args: { start_time: "...", end_time: "..." } })
+```
+
+This costs **~1.5k tokens** upfront instead of ~56k. Every tool remains
+reachable; nothing was removed to achieve it.
+
 Tool names follow the Respan backend exactly: `noun_verb`, lowercase, with the
 resource first. `log_list`, `trace_get`, `prompt_create`, `monitor_deploy`. The
 resource leads because that is what you are usually searching for.
@@ -141,22 +167,29 @@ pipeline composed of graders. `grader_create` builds a scorer;
 ### Getting the current list
 
 Tool definitions are generated, so this README is not the source of truth. Call
-`tools/list`, or read `lib/generated/manifest.json`, which carries every tool's
-name, description and parameter schema.
+`tool_search` with no arguments for the groups, or read
+`lib/generated/manifest.json`, which carries every tool's name, description and
+parameter schema.
 
-The server publishes **171 tools**, covering the full in-product agent surface.
-`npm run verify` fails if a tool in that surface is missing here without a
-recorded reason, so the two cannot drift apart silently.
+The server serves **155 tools**, covering the in-product agent surface apart
+from 18 deliberate exclusions. `npm run verify` fails if an agent-tier tool is
+missing without a recorded reason, so the two cannot drift apart silently, and
+it also fails if any tool becomes unreachable from every `tool_search` group.
 
-One tool is deliberately not exposed: `dashboard_platform_public_stats` returns
-Respan-wide aggregates rather than your own data. Its reason is recorded in
-`scripts/verify-agent-parity.mjs`.
+Withheld on purpose, with reasons recorded in `scripts/verify-agent-parity.mjs`:
+per-run history and run time-series reads, the time-series dashboard reads
+(their `_summary` twins are served), hard prompt deletion, and
+`dashboard_platform_public_stats`.
 
-### Loading only the tools you need
+### Registering every tool directly
 
-171 tools is roughly 67k tokens of definitions, which every client loads before
-making a call. If that is more than you want, send a `Respan-Enabled-Tools`
-header listing the tool names to register, and the server skips the rest:
+If you would rather have the tools registered as ordinary MCP tools — because
+you pin names, script against them, or your client shows a tool picker — ask for
+the flat surface. It costs ~56k tokens of definitions upfront.
+
+**Stdio:** set `RESPAN_TOOL_MODE=flat`.
+
+**HTTP:** send a `Respan-Tool-Mode` header.
 
 ```json
 {
@@ -165,14 +198,22 @@ header listing the tool names to register, and the server skips the rest:
       "url": "https://mcp.respan.ai/api/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_RESPAN_API_KEY",
-        "Respan-Enabled-Tools": "log_list,log_get,trace_list,trace_get"
+        "Respan-Tool-Mode": "flat"
       }
     }
   }
 }
 ```
 
-This is a convenience filter, not a permission boundary. It changes what is
+To register a specific subset, send `Respan-Enabled-Tools` with a comma-separated
+list. Naming tools implies you already know them, so this selects the flat
+surface on its own:
+
+```json
+"Respan-Enabled-Tools": "log_list,log_get,trace_list,trace_get"
+```
+
+Both are convenience filters, not permission boundaries. They change what is
 advertised, not what your token can reach.
 
 ## Migrating from the old tool names
@@ -234,22 +275,31 @@ respan-mcp/
 ├── lib/
 │   ├── index.ts              # Stdio entry point (local mode)
 │   ├── shared/
+│   │   ├── registry.ts       # Every tool registered, in one place; mode switch
+│   │   ├── deferred.ts       # tool_search / tool_schema / tool_execute
 │   │   ├── client.ts         # API client, auth, org scoping headers
+│   │   ├── pagination.ts     # Page bounds, mirroring the backend's table
+│   │   ├── manifestTool.ts   # Hand-routed tool, manifest name/description/schema
 │   │   ├── sanitize.ts       # Credential masking for tool output
 │   │   └── mcp-handler.ts    # HTTP server factory, tool whitelist
 │   ├── generated/
 │   │   ├── manifest.json     # Generated tool surface (do not hand-edit)
 │   │   ├── register.ts       # Registers tools that have a verified route
+│   │   ├── descriptions.ts   # Backend descriptions, read back by hand-written tools
 │   │   └── schema-to-zod.ts  # JSON Schema -> Zod for the manifest
-│   ├── observe/              # log_*, trace_*, customer_*
+│   ├── observe/              # log_*, trace_*, customer_*, dashboard_*, pulse_*
 │   ├── develop/              # prompt_*, experiment_*, and the typed
 │   │                         #   monitor_* / automation_* / report_* sets
 │   ├── evaluate/             # grader_*, evaluator_*, dataset_*
+│   ├── platform/             # org_*, api_key_*, notification_*, limit_*
 │   └── docs/                 # docs_search
 ├── scripts/
-│   ├── generate_manifest.py       # Regenerates the tool surface
-│   ├── verify-own-org-header.mjs  # Security check (org scoping)
-│   └── verify-tool-naming.mjs     # Naming convention check
+│   ├── generate_manifest.py           # Regenerates the tool surface
+│   ├── verify-tool-naming.mjs         # Naming convention, no dangling references
+│   ├── verify-agent-parity.mjs        # Agent-tier coverage and exclusions
+│   ├── verify-pagination-parity.mjs   # Page bounds match the backend
+│   ├── verify-deferred-surface.mjs    # Every tool reachable via tool_search
+│   └── verify-own-org-header.mjs      # Security check (org scoping)
 ├── vercel.json
 ├── tsconfig.json
 └── package.json
@@ -260,6 +310,7 @@ respan-mcp/
 - **Two entry points:** `api/mcp.ts` (HTTP via Vercel) and `lib/index.ts` (stdio for local use)
 - **Shared core:** Both entry points create an `AuthConfig` and pass it to the same tool registration functions via closures - no global mutable state
 - **Tool modules:** Organized by domain (`observe/` for runtime data, `develop/` for prompt management)
+- **One registry, two surfaces:** `lib/shared/registry.ts` registers every tool in one place. The deferred surface captures those same registrations instead of publishing them, so both modes run identical handlers — there is no second implementation to keep in step
 - **API client:** `lib/shared/client.ts` handles all upstream API calls with 30s timeout, path validation, and auth
 
 ---
@@ -318,7 +369,9 @@ npm run verify
 
 That covers naming (`noun_verb`, no generic workflow tools, no descriptions
 pointing at tools this server does not publish), agent-tier parity, pagination
-bounds against the backend, and the scoping headers above.
+bounds against the backend, the deferred surface (every tool reachable through
+`tool_search`, and every group named in its description), and the scoping
+headers above.
 
 Note that this scopes a staff token down; it does not reject one. Refusing
 staff-owned credentials outright cannot be done here, because an API key cannot
