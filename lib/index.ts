@@ -3,23 +3,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { resolveAuthFromEnv, createClient } from "./shared/client.js";
-import { registerLogTools } from "./observe/logs.js";
-import { registerTraceTools } from "./observe/traces.js";
-import { registerUserTools } from "./observe/users.js";
-import { registerPromptTools } from "./develop/prompts.js";
-import { registerExperimentTools } from "./develop/experiments.js";
-import { registerEvaluatorTools } from "./evaluate/evaluators.js";
-import { registerDatasetTools } from "./evaluate/datasets.js";
-import { registerEvaluationPipelineTools } from "./evaluate/pipelines.js";
-import { registerWorkflowTools } from "./develop/workflows.js";
-import { registerLifecycleTools } from "./develop/lifecycle.js";
-import { registerDashboardTools } from "./observe/dashboard.js";
-import { registerTelemetryTools } from "./observe/telemetry.js";
-import { registerPulseTools } from "./observe/pulse.js";
-import { registerPlatformConfigTools } from "./platform/config.js";
-import { registerAccountTools } from "./platform/account.js";
-import { registerDocTools } from "./docs/tools.js";
-import { recordRegisteredNames, registerSyncedTools } from "./generated/register.js";
+import { registerSurface, resolveSurfaceMode } from "./shared/registry.js";
 
 async function main() {
   const auth = resolveAuthFromEnv();
@@ -35,32 +19,15 @@ async function main() {
     version: "1.0.0",
   });
 
-  const handWritten = recordRegisteredNames(server);
-
-  registerLogTools(server, client);
-  registerTraceTools(server, client);
-  registerUserTools(server, client);
-  registerPromptTools(server, client);
-  registerExperimentTools(server, client);
-  registerEvaluatorTools(server, client);
-  registerDatasetTools(server, client);
-  registerEvaluationPipelineTools(server, client);
-  registerWorkflowTools(server, client);
-  registerLifecycleTools(server, client);
-  registerDashboardTools(server, client);
-  registerTelemetryTools(server, client);
-  registerPulseTools(server, client);
-  registerPlatformConfigTools(server, client);
-  registerAccountTools(server, client);
-  // Documentation search hits public docs with no auth and no backend call, so
-  // it belongs on the main server too, not only the standalone docs endpoint.
-  registerDocTools(server);
-  registerSyncedTools(server, client, handWritten);
+  // Deferred by default. Set RESPAN_TOOL_MODE=flat to register every tool
+  // directly instead, for a client that pins tool names.
+  const mode = resolveSurfaceMode(process.env.RESPAN_TOOL_MODE);
+  registerSurface(server, client, mode);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error("Respan MCP Server running on stdio");
+  console.error(`Respan MCP Server running on stdio (${mode} tool surface)`);
 }
 
 main().catch((error) => {

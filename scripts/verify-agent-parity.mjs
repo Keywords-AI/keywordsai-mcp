@@ -77,7 +77,7 @@ const agentTier = manifest.tools.map(t => t.name);
 
 const proc = spawn('node', ['dist/lib/index.js'], {
   cwd: process.cwd(),
-  env: { ...process.env, RESPAN_API_KEY: 'parity-check-not-a-real-key' },
+  env: { ...process.env, RESPAN_API_KEY: 'parity-check-not-a-real-key', RESPAN_TOOL_MODE: 'flat' },
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 let buf = '';

@@ -3,31 +3,23 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { RespanClient } from '@respan/respan-api';
 import type { AuthenticatedClient } from './client.js';
-import { registerLogTools } from '../observe/logs.js';
-import { registerTraceTools } from '../observe/traces.js';
-import { registerUserTools } from '../observe/users.js';
-import { registerPromptTools } from '../develop/prompts.js';
-import { registerExperimentTools } from '../develop/experiments.js';
-import { registerEvaluatorTools } from '../evaluate/evaluators.js';
-import { registerDatasetTools } from '../evaluate/datasets.js';
-import { registerEvaluationPipelineTools } from '../evaluate/pipelines.js';
-import { registerWorkflowTools } from '../develop/workflows.js';
-import { registerLifecycleTools } from '../develop/lifecycle.js';
-import { registerDashboardTools } from '../observe/dashboard.js';
-import { registerTelemetryTools } from '../observe/telemetry.js';
-import { registerPulseTools } from '../observe/pulse.js';
-import { registerPlatformConfigTools } from '../platform/config.js';
-import { registerAccountTools } from '../platform/account.js';
-import { registerDocTools } from '../docs/tools.js';
-import { recordRegisteredNames, registerSyncedTools } from '../generated/register.js';
+import { registerSurface, resolveSurfaceMode } from './registry.js';
 
-function createServer(client: AuthenticatedClient | null, enabledTools?: Set<string>): McpServer {
+function createServer(
+  client: AuthenticatedClient | null,
+  enabledTools?: Set<string>,
+  requestedMode?: string,
+): McpServer {
   const server = new McpServer({
     name: 'respan',
     version: '1.0.0',
   });
 
-  // If Respan-Enabled-Tools header is set, only register whitelisted tools
+  // Respan-Enabled-Tools names specific tools, which only means anything on a
+  // flat surface — applied to the deferred one it would filter away the three
+  // meta-tools and leave nothing. Sending it selects flat.
+  const mode = enabledTools?.size ? 'flat' : resolveSurfaceMode(requestedMode);
+
   if (enabledTools?.size) {
     const originalTool = server.tool.bind(server);
     (server as any).tool = function (name: string) {
@@ -36,29 +28,7 @@ function createServer(client: AuthenticatedClient | null, enabledTools?: Set<str
     };
   }
 
-  // Names claimed by the hand-written modules below; the generated layer
-  // defers to them instead of silently overwriting.
-  const handWritten = recordRegisteredNames(server);
-
-  registerLogTools(server, client);
-  registerTraceTools(server, client);
-  registerUserTools(server, client);
-  registerPromptTools(server, client);
-  registerExperimentTools(server, client);
-  registerEvaluatorTools(server, client);
-  registerDatasetTools(server, client);
-  registerEvaluationPipelineTools(server, client);
-  registerWorkflowTools(server, client);
-  registerLifecycleTools(server, client);
-  registerDashboardTools(server, client);
-  registerTelemetryTools(server, client);
-  registerPulseTools(server, client);
-  registerPlatformConfigTools(server, client);
-  registerAccountTools(server, client);
-  // Documentation search hits public docs with no auth and no backend call, so
-  // it belongs on the main server too, not only the standalone docs endpoint.
-  registerDocTools(server);
-  registerSyncedTools(server, client, handWritten);
+  registerSurface(server, client, mode);
 
   return server;
 }
@@ -130,7 +100,8 @@ export function createMcpHandler(defaultBaseUrl: string, resourceMetadataPath: s
         ? new Set(enabledToolsHeader.split(',').map(t => t.trim()).filter(Boolean))
         : undefined;
 
-      const server = createServer(authenticatedClient, enabledTools);
+      const requestedMode = req.headers['respan-tool-mode'] as string | undefined;
+      const server = createServer(authenticatedClient, enabledTools, requestedMode);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });

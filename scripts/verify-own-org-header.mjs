@@ -29,7 +29,7 @@ const base = `http://127.0.0.1:${srv.address().port}`;
 
 const p = spawn('node', ['dist/lib/index.js'], {
   cwd: process.cwd(),
-  env: { ...process.env, RESPAN_API_KEY: 'test-key', RESPAN_API_BASE_URL: base },
+  env: { ...process.env, RESPAN_API_KEY: 'test-key', RESPAN_API_BASE_URL: base, RESPAN_TOOL_MODE: 'flat' },
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 const send = o => p.stdin.write(JSON.stringify(o) + '\n');
