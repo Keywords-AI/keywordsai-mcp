@@ -18,6 +18,7 @@ import { registerTelemetryTools } from '../observe/telemetry.js';
 import { registerPulseTools } from '../observe/pulse.js';
 import { registerPlatformConfigTools } from '../platform/config.js';
 import { registerAccountTools } from '../platform/account.js';
+import { registerDocTools } from '../docs/tools.js';
 import { recordRegisteredNames, registerSyncedTools } from '../generated/register.js';
 
 function createServer(client: AuthenticatedClient | null, enabledTools?: Set<string>): McpServer {
@@ -54,6 +55,9 @@ function createServer(client: AuthenticatedClient | null, enabledTools?: Set<str
   registerPulseTools(server, client);
   registerPlatformConfigTools(server, client);
   registerAccountTools(server, client);
+  // Documentation search hits public docs with no auth and no backend call, so
+  // it belongs on the main server too, not only the standalone docs endpoint.
+  registerDocTools(server);
   registerSyncedTools(server, client, handWritten);
 
   return server;

@@ -82,16 +82,6 @@ export function registerLifecycleTools(server: McpServer, client: AuthenticatedC
     return { deleted: true, prompt_id: promptId, name: check.name };
   });
 
-  registerManifestTool(server, client, 'prompt_permanent_delete', async (c, args) => {
-    const promptId = String(args.prompt_id);
-    const check = await confirmPromptName(c, promptId, args.user_confirmation);
-    if (!check.ok) return check.result;
-    await rawFetch(c, `/api/prompts/${encodeURIComponent(promptId)}/?permanent=true`, {
-      method: 'DELETE',
-    });
-    return { permanently_deleted: true, prompt_id: promptId, name: check.name };
-  });
-
   registerManifestTool(server, client, 'prompt_draft_init', async (c, args) => {
     if (!args.messages || (Array.isArray(args.messages) && args.messages.length === 0)) {
       return {
@@ -105,13 +95,6 @@ export function registerLifecycleTools(server: McpServer, client: AuthenticatedC
       body: pick(args, VERSION_CONTENT_KEYS),
     });
   });
-
-  registerManifestTool(server, client, 'prompt_trash_restore', async (c, args) =>
-    rawFetch(c, '/api/prompts/backups/', {
-      method: 'POST',
-      body: { prompt_id: args.prompt_id },
-    }),
-  );
 
   // organization_id is dropped: it is the cross-org restore path, which this
   // surface does not offer. Without it the backend scopes the restore to the

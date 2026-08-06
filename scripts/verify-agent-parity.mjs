@@ -16,11 +16,57 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
+const RUN_METRICS_REASON =
+  'Withheld by product decision: run-history and run time-series reads are ' +
+  'per-run operational detail, and the four nouns multiply them into eight ' +
+  'tools carrying some of the longest descriptions on the surface. The ' +
+  'eval-score reads cover the question customers actually ask of a graded run.';
+
+const CHART_REASON =
+  'Withheld by product decision: returns a time-bucketed series meant to be ' +
+  'plotted. An MCP client renders text, so the series arrives as rows a model ' +
+  'reads out one bucket at a time. The matching _summary read answers the same ' +
+  'question as a single collapsed figure.';
+
+/** The plot-shaped dashboard reads: every *_over_time twin, plus the chart tool. */
+const CHART_TOOLS = Object.fromEntries(
+  [
+    'dashboard_llm_metrics_over_time',
+    'dashboard_quantiles_over_time',
+    'dashboard_storage_volume_over_time',
+    'dashboard_eval_results_over_time',
+    'dashboard_metric_chart',
+  ].map(name => [name, CHART_REASON]),
+);
+
 const EXCLUDED = {
   dashboard_platform_public_stats:
     'Returns Respan-wide aggregate statistics rather than the caller\'s own data, ' +
     'and resolves its host from an operator profile rather than the configured ' +
     'base URL. Neither fits a surface pinned to one organization.',
+
+  oauth_resource_list:
+    'Withheld by product decision. Also backed by a JWT-only endpoint, so it ' +
+    'would 401 under the API-key auth this package documents as its main path.',
+
+  prompt_permanent_delete:
+    'Withheld by product decision: irreversible destruction of a prompt and ' +
+    'every version, with no trash to recover from. prompt_delete (soft, 30-day ' +
+    'trash) covers the intent a customer actually has.',
+  prompt_trash_restore:
+    'Withheld by product decision, alongside prompt_permanent_delete. Trashed ' +
+    'prompts remain findable with prompt_list(is_deleted=true).',
+
+  ...CHART_TOOLS,
+
+  monitor_run_history: RUN_METRICS_REASON,
+  monitor_runs_time_series: RUN_METRICS_REASON,
+  automation_run_history: RUN_METRICS_REASON,
+  automation_runs_time_series: RUN_METRICS_REASON,
+  report_run_history: RUN_METRICS_REASON,
+  report_runs_time_series: RUN_METRICS_REASON,
+  evaluator_run_history: RUN_METRICS_REASON,
+  evaluator_runs_time_series: RUN_METRICS_REASON,
 };
 
 const manifest = JSON.parse(readFileSync('lib/generated/manifest.json', 'utf-8'));

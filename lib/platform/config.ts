@@ -179,15 +179,4 @@ export function registerPlatformConfigTools(server: McpServer, client: Authentic
     });
   });
 
-  registerManifestTool(server, client, 'oauth_resource_list', async (c, args) => {
-    const provider = encodeURIComponent(String(args.provider));
-    const paging = clampPagination('oauth_resource_list', args);
-    const q = new URLSearchParams({ page: String(paging.page), page_size: String(paging.page_size) });
-    // The tool's `resource_type` is the endpoint's `type`.
-    if (args.resource_type) q.set('type', String(args.resource_type));
-    if (args.search) q.set('search', String(args.search));
-    return rawFetch(c, `/api/integrations/oauth/${provider}/resources/list/?${q.toString()}`, {
-      method: 'GET',
-    });
-  });
 }

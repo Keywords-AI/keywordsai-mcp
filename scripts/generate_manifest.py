@@ -250,6 +250,17 @@ _DANGLING_TOOL_SENTENCES = (
     # not in the agent registry, so no surface publishes it. Reported upstream;
     # drop this rule once the backend description stops naming it.
     re.compile(r"\bevaluator_run_update\b"),
+    # Withheld from this surface (see verify-agent-parity.mjs), so the sentence
+    # telling a caller to resolve OAuth channel ids with it cannot be followed.
+    # No guidance is lost: that endpoint is JWT-only, so the OAuth channel shape
+    # was never reachable under an API key, and the webhook_url shape those
+    # descriptions document alongside it still is.
+    re.compile(r"\boauth_resource_list\b"),
+    # Withheld from this surface (see verify-agent-parity.mjs). Sibling prompt
+    # descriptions point at it as the recovery path; that path is the web app
+    # here. The sentences dropped alongside it only name the discovery trick,
+    # which prompt_list's own is_deleted argument already documents.
+    re.compile(r"\bprompt_trash_restore\b"),
 )
 
 

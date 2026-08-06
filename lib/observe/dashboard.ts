@@ -33,28 +33,28 @@ const TOP_BREAKDOWN: Record<string, string> = {
 /** Schema documents default 10; send it so the view enforces the documented value. */
 const TOP_BREAKDOWN_DEFAULT_LIMIT = 10;
 
-/** POST-for-filtering reads that forward the caller's filters. */
+/**
+ * POST-for-filtering reads that forward the caller's filters.
+ *
+ * The `*_over_time` twins of these, and dashboard_metric_chart, are withheld
+ * from this surface — see verify-agent-parity.mjs. What remains answers the
+ * same questions as a collapsed figure rather than a series to plot.
+ */
 const SIMPLE_POST: Record<string, string> = {
   dashboard_llm_metrics_summary: 'llm-metrics/summary',
   dashboard_active_users: 'users',
-  dashboard_quantiles_over_time: 'quantiles',
   dashboard_quantiles_summary: 'quantiles/summary',
 };
 
 /** POST reads whose endpoint does not support filters — body stays empty. */
 const NO_FILTER_POST: Record<string, string> = {
   dashboard_total_users: 'total-users',
-  dashboard_eval_results_over_time: 'eval-results',
   dashboard_eval_results_summary: 'eval-results/summary',
-  dashboard_storage_volume_over_time: 'storage-volume',
   dashboard_storage_volume_summary: 'storage-volume/summary',
 };
 
-/** The eval-results reads take two extra query arguments. */
-const EVAL_RESULTS_TOOLS = new Set([
-  'dashboard_eval_results_over_time',
-  'dashboard_eval_results_summary',
-]);
+/** The eval-results read takes two extra query arguments. */
+const EVAL_RESULTS_TOOLS = new Set(['dashboard_eval_results_summary']);
 
 /**
  * Pins the eval reads to pipeline rollups. Unscoped, the read is all-origin, so
@@ -73,15 +73,6 @@ function windowQuery(name: string, args: Record<string, any>): URLSearchParams {
 }
 
 export function registerDashboardTools(server: McpServer, client: AuthenticatedClient | null) {
-  // --- llm metrics over time: breakdown endpoint, no pinned dimension ---
-  registerManifestTool(server, client, 'dashboard_llm_metrics_over_time', async (c, args) => {
-    const q = windowQuery('dashboard_llm_metrics_over_time', args);
-    return rawFetch(c, `${DASHBOARD_PATH}/llm-metrics/?${q.toString()}`, {
-      method: 'POST',
-      body: { filters: args.filters ?? {} },
-    });
-  });
-
   // --- rank-by-dimension reads ---
   for (const [name, breakdownBy] of Object.entries(TOP_BREAKDOWN)) {
     registerManifestTool(server, client, name, async (c, args) => {
@@ -120,19 +111,4 @@ export function registerDashboardTools(server: McpServer, client: AuthenticatedC
     });
   }
 
-  // --- time-series chart read ---
-  registerManifestTool(server, client, 'dashboard_metric_chart', async (c, args) => {
-    const metric = args.metric ?? 'number_of_requests';
-    const scope = args.scope ?? 'span';
-    const q = windowQuery('dashboard_metric_chart', args);
-    if (args.breakdown_by) q.set('breakdown_by', String(args.breakdown_by));
-    if (scope !== 'span') q.set('scope', String(scope));
-    // Ask for just the charted metric. The endpoint defaults to three and would
-    // otherwise never compute error or latency buckets, and narrowing keeps the
-    // aggregation to what the caller actually reads.
-    return rawFetch(c, `${DASHBOARD_PATH}/time-series/breakdown/?${q.toString()}`, {
-      method: 'POST',
-      body: { filters: args.filters ?? {}, metrics_to_aggregate: [metric] },
-    });
-  });
 }

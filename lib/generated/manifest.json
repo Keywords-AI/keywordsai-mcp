@@ -2206,7 +2206,7 @@
   },
   {
    "name": "evaluator_create",
-   "description": "Create a V2 evaluator (renders in the Blockly visual editor). Takes grader IDs (from grader_create) and an optional combine method. Handles all Blockly metadata automatically \u2014 you only provide the semantic structure. ALWAYS use this (not grader_create) when creating an evaluator the user will see on the Evaluators page. Patterns: - Single grader: steps=[{grader_id: 'abc'}] - Average: steps=[{grader_id: 'abc'}, {grader_id: 'def'}], combine='average' - Weighted avg: steps=[...], combine='weighted_average', weights=[0.6, 0.4] - Condition gate: steps=[{grader_id: 'abc'}], condition={check_grader_id: 'xyz', operator: 'gt', value: 50, else_value: 0} steps[].grader_id wants a GRADER id \u2014 never an evaluator id. RETURNS: `id` (version PK \u2014 the id experiment_create.evaluator_workflow_ids and scores__<id> sort keys want) and `workflow_id` (family id).",
+   "description": "Create a V2 evaluator (renders in the Blockly visual editor). Takes grader IDs (from grader_create) and an optional combine method. Handles all Blockly metadata automatically \u2014 you only provide the semantic structure. ALWAYS use this (not grader_create) when creating an evaluator the user will see on the Evaluators page. Patterns: - Single grader: steps=[{grader_id: 'abc'}] - Average: steps=[{grader_id: 'abc'}, {grader_id: 'def'}], combine='average' - Weighted avg: steps=[...], combine='weighted_average', weights=[0.6, 0.4] - Condition gate: steps=[{grader_id: 'abc'}], condition={check_grader_id: 'xyz', operator: 'gt', value: 50, else_value: 0} steps[].grader_id wants a GRADER id \u2014 never an evaluator id. RETURNS: `id` (version PK \u2014 the id an experiment's evaluator_workflow_ids argument and scores__<id> sort keys want) and `workflow_id` (family id).",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -2472,7 +2472,7 @@
   },
   {
    "name": "evaluator_list",
-   "description": "List the user-visible evaluators (V2). Returns all evaluators for the organization. This is the data shown on the Evaluators page. RETURNS per row: `id` (version PK \u2014 the id experiment_create.evaluator_workflow_ids and scores__<id> sort keys want) and `workflow_id` (family id). Graders (the building blocks) are listed by grader_list, not here. No row for a name the user called an evaluator does NOT mean it is absent: users say 'evaluator' for a bare grader too. Check grader_list for that name before reporting it missing, and test a grader with grader_run.",
+   "description": "List the user-visible evaluators (V2). Returns all evaluators for the organization. This is the data shown on the Evaluators page. RETURNS per row: `id` (version PK \u2014 the id an experiment's evaluator_workflow_ids argument and scores__<id> sort keys want) and `workflow_id` (family id). Graders (the building blocks) are listed by grader_list, not here. No row for a name the user called an evaluator does NOT mean it is absent: users say 'evaluator' for a bare grader too. Check grader_list for that name before reporting it missing.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -3071,7 +3071,7 @@
   },
   {
    "name": "experiment_logs_list",
-   "description": "List logs/traces for an experiment. Returns traces with scores, cost, tokens, latency (input/output content is stripped \u2014 use experiment_log_get for full details). Supports pagination, sorting, and POST-for-Filtering. To rank by evaluator score, sort by 'scores__<evaluator_version_id>' where <evaluator_version_id> is the evaluator's version PK (the same id passed to experiment_create.evaluator_workflow_ids \u2014 NOT the grader id, NOT the workflow_id family). Ascending = worst first ('scores__<id>'); descending = best first ('-scores__<id>'). Rows without a populated scores field mean the experiment is still running or had no evaluator attached \u2014 report that honestly, never treat it as a zero score.",
+   "description": "List logs/traces for an experiment. Returns traces with scores, cost, tokens, latency (input/output content is stripped \u2014 use experiment_log_get for full details). Supports pagination, sorting, and POST-for-Filtering. To rank by evaluator score, sort by 'scores__<evaluator_version_id>' where <evaluator_version_id> is the evaluator's version PK (the same id passed as an experiment's evaluator_workflow_ids \u2014 NOT the grader id, NOT the workflow_id family). Ascending = worst first ('scores__<id>'); descending = best first ('-scores__<id>'). Rows without a populated scores field mean the experiment is still running or had no evaluator attached \u2014 report that honestly, never treat it as a zero score.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -3092,7 +3092,7 @@
      },
      "sort_by": {
       "type": "string",
-      "description": "Sort field. Prefix with - for descending. Options: time, cost, duration, spans, input_tokens, output_tokens, total_tokens, tps, ttft, name. To rank by evaluator score: use 'scores__<evaluator_version_id>' (ascending \u2192 worst-scoring first) or '-scores__<evaluator_version_id>' (descending \u2192 best-scoring first). The <evaluator_version_id> is the evaluator's version PK from evaluator_list (same id you pass to experiment_create.evaluator_workflow_ids), NOT the grader's evaluator_id. Default: -start_time."
+      "description": "Sort field. Prefix with - for descending. Options: time, cost, duration, spans, input_tokens, output_tokens, total_tokens, tps, ttft, name. To rank by evaluator score: use 'scores__<evaluator_version_id>' (ascending \u2192 worst-scoring first) or '-scores__<evaluator_version_id>' (descending \u2192 best-scoring first). The <evaluator_version_id> is the evaluator's version PK from evaluator_list (same id you pass as an experiment's evaluator_workflow_ids), NOT the grader's evaluator_id. Default: -start_time."
      }
     },
     "required": [
@@ -3638,7 +3638,7 @@
   },
   {
    "name": "log_count",
-   "description": "Get the total number of logs matching a time range and optional filters. Call this BEFORE dataset_create when the user requests a specific number of logs, so you can calculate the right sampling percentage.",
+   "description": "Get the total number of logs matching a time range and optional filters. Call this BEFORE creating a dataset when the user requests a specific number of logs, so you can calculate the right sampling percentage.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -4524,7 +4524,7 @@
   },
   {
    "name": "notification_method_create",
-   "description": "Create a notification method for an organization. Types: slack (webhook_url OR OAuth channel), microsoft_teams (webhook_url OR OAuth channel), email (email, subject_prefix), webhook (webhook_url, headers, method), pagerduty (integration_key, service_name), sms (phone_number), custom (webhook_url, headers, method). For the slack/microsoft_teams OAuth shape, resolve oauth_integration_id and channel/team ids with oauth_resource_list.",
+   "description": "Create a notification method for an organization. Types: slack (webhook_url OR OAuth channel), microsoft_teams (webhook_url OR OAuth channel), email (email, subject_prefix), webhook (webhook_url, headers, method), pagerduty (integration_key, service_name), sms (phone_number), custom (webhook_url, headers, method).",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -4752,7 +4752,7 @@
   },
   {
    "name": "prompt_backup_list",
-   "description": "List available backup snapshots for an organization's prompts. Returns: prompt_id, date, size for each backup. Use prompt_backup_restore with prompt_id + optional date to restore.",
+   "description": "List available backup snapshots for an organization's prompts. Returns: prompt_id, date, size for each backup. A backup is restored by prompt_id plus an optional date.",
    "inputSchema": {
     "type": "object",
     "properties": {},
@@ -4854,7 +4854,7 @@
   },
   {
    "name": "prompt_delete",
-   "description": "Soft-delete a prompt (moves to trash for 30 days). You MUST ask the user to type out the exact prompt name they want to delete, then pass their response as user_confirmation. Use prompt_list(is_deleted=true) to see deleted prompts, prompt_trash_restore to recover.",
+   "description": "Soft-delete a prompt (moves to trash for 30 days). You MUST ask the user to type out the exact prompt name they want to delete, then pass their response as user_confirmation.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -5067,7 +5067,7 @@
      },
      "is_deleted": {
       "type": "boolean",
-      "description": "Set true to list SOFT-DELETED prompts (the trash) instead of active ones. Deleted prompts are hidden by default. This is the only way to find a trashed prompt's prompt_id for prompt_trash_restore."
+      "description": "Set true to list SOFT-DELETED prompts (the trash) instead of active ones. Deleted prompts are hidden by default."
      },
      "page": {
       "type": "integer",
@@ -5327,7 +5327,7 @@
   },
   {
    "name": "prompt_versions_list",
-   "description": "List all versions of a prompt (PAGINATED, default 10/page). Use to see version history and find which version to deploy. RETURNS per entry: version (int), description, model, readonly (bool \u2014 true=committed/deployable, false=draft), created_at, edited_by. prompt_deploy accepts both draft and committed versions (drafts are auto-committed before deployment).",
+   "description": "List all versions of a prompt (PAGINATED, default 10/page). Use to see version history and find which version to deploy. RETURNS per entry: version (int), description, model, readonly (bool \u2014 true=committed/deployable, false=draft), created_at, edited_by. Deploying accepts both draft and committed versions (drafts are auto-committed before deployment).",
    "inputSchema": {
     "type": "object",
     "properties": {

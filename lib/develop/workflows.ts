@@ -29,8 +29,6 @@ type WorkflowOp =
   | "undeploy"
   | "validate"
   | "run_now"
-  | "run_history"
-  | "runs_time_series"
   | "eval_run_history"
   | "eval_scores_summary"
   | "eval_scores_time_series";
@@ -51,7 +49,7 @@ interface NounSpec {
   ops: WorkflowOp[];
 }
 
-/** CRUD, lifecycle and run-history surface every noun owns. */
+/** CRUD and lifecycle surface every noun owns. */
 const FULL_OPS: WorkflowOp[] = [
   "list",
   "get",
@@ -64,8 +62,6 @@ const FULL_OPS: WorkflowOp[] = [
   "deploy",
   "undeploy",
   "validate",
-  "run_history",
-  "runs_time_series",
 ];
 
 /** Only graded surfaces produce eval scores: automations and evaluators. */
@@ -101,8 +97,6 @@ const NOUNS: NounSpec[] = [
       "undeploy",
       "validate",
       "run_now",
-      "run_history",
-      "runs_time_series",
       ...EVAL_OPS,
     ],
   },
@@ -302,9 +296,6 @@ interface MetricsEndpoint {
 }
 
 const METRICS_ENDPOINTS: Record<string, MetricsEndpoint> = {
-  run_history: { path: "runs/list", isPaginated: true },
-  // Named runs/summary but returns one row per bucket, not a single total.
-  runs_time_series: { path: "runs/summary", isBucketed: true, isVersionScoped: true },
   eval_run_history: { path: "eval-runs", isPaginated: true, isEvalScoped: true },
   eval_scores_summary: { path: "eval-scores", isEvalScoped: true },
   eval_scores_time_series: {
@@ -775,8 +766,6 @@ const REGISTRARS: Record<WorkflowOp, Registrar> = {
     );
   },
 
-  run_history: metricsRegistrar("run_history"),
-  runs_time_series: metricsRegistrar("runs_time_series"),
   eval_run_history: metricsRegistrar("eval_run_history"),
   eval_scores_summary: metricsRegistrar("eval_scores_summary"),
   eval_scores_time_series: metricsRegistrar("eval_scores_time_series"),

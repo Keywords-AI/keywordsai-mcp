@@ -14,7 +14,7 @@ export function registerPromptTools(server: McpServer, client: AuthenticatedClie
       is_deleted: z
         .boolean()
         .optional()
-        .describe("Set true to list SOFT-DELETED prompts (the trash) instead of active ones. Deleted prompts are hidden by default. This is the only way to find a trashed prompt's prompt_id for prompt_trash_restore."),
+        .describe("Set true to list SOFT-DELETED prompts (the trash) instead of active ones. Deleted prompts are hidden by default."),
       ...paginationShape("prompt_list"),
       sort_by: z
         .enum(["-id", "current_version__updated_at"])
