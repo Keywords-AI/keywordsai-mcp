@@ -142,12 +142,38 @@ pipeline composed of graders. `grader_create` builds a scorer;
 
 Tool definitions are generated, so this README is not the source of truth. Call
 `tools/list`, or read `lib/generated/manifest.json`, which carries every tool's
-name, description and parameter schema, plus a reason for each backend tool that
-is deliberately not exposed here.
+name, description and parameter schema.
 
-Tools are held back when their endpoint requires interactive authentication (an
-API key cannot call it), when their behaviour could not be verified, or when
-they are known to fail under API-key auth.
+The server publishes **171 tools**, covering the full in-product agent surface.
+`npm run verify` fails if a tool in that surface is missing here without a
+recorded reason, so the two cannot drift apart silently.
+
+One tool is deliberately not exposed: `dashboard_platform_public_stats` returns
+Respan-wide aggregates rather than your own data. Its reason is recorded in
+`scripts/verify-agent-parity.mjs`.
+
+### Loading only the tools you need
+
+171 tools is roughly 67k tokens of definitions, which every client loads before
+making a call. If that is more than you want, send a `Respan-Enabled-Tools`
+header listing the tool names to register, and the server skips the rest:
+
+```json
+{
+  "mcpServers": {
+    "respan": {
+      "url": "https://mcp.respan.ai/api/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_RESPAN_API_KEY",
+        "Respan-Enabled-Tools": "log_list,log_get,trace_list,trace_get"
+      }
+    }
+  }
+}
+```
+
+This is a convenience filter, not a permission boundary. It changes what is
+advertised, not what your token can reach.
 
 ## Migrating from the old tool names
 
@@ -283,6 +309,16 @@ npm run build:server && node scripts/verify-own-org-header.mjs
 
 It runs one tool through each transport against a local server and exits
 non-zero if any request is missing the header.
+
+Run every check at once with:
+
+```bash
+npm run verify
+```
+
+That covers naming (`noun_verb`, no generic workflow tools, no descriptions
+pointing at tools this server does not publish), agent-tier parity, pagination
+bounds against the backend, and the scoping headers above.
 
 Note that this scopes a staff token down; it does not reject one. Refusing
 staff-owned credentials outright cannot be done here, because an API key cannot
