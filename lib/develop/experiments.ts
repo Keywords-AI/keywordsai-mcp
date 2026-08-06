@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AuthenticatedClient } from "../shared/client.js";
 import { requireClient, rawFetch } from "../shared/client.js";
+import { clampPagination, paginationShape } from "../shared/pagination.js";
 
 export function registerExperimentTools(
   server: McpServer,
@@ -11,15 +12,13 @@ export function registerExperimentTools(
     "experiment_list",
     "List experiments. Returns name, dataset, status, progress, workflow_count, tags.",
     {
-      page: z.number().optional().describe("Page number (default: 1)"),
-      page_size: z.number().optional().describe("Page size (default: 10, max: 25)"),
+      ...paginationShape("experiment_list"),
     },
     async ({ page_size, page }) => {
       const c = requireClient(client);
       const data = await c.client.experiments.listExperiments({
         Authorization: c.auth,
-        ...(page_size ? { page_size } : {}),
-        ...(page ? { page } : {}),
+        ...clampPagination("experiment_list", { page, page_size }),
       });
       return {
         content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
@@ -171,8 +170,9 @@ export function registerExperimentTools(
         score_type: string;
       }> = {};
       let scanned = 0;
-      let page = 1;
-      const pageSize = 50;
+      // listExperimentSpans returns every span in one call, so this walks once.
+      // Kept as a loop because max_spans is the documented bound and a paged
+      // endpoint would only need the break below removed.
       while (scanned < max_spans) {
         const resp = await c.client.experiments.listExperimentSpans({
           Authorization: c.auth,

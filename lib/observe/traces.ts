@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AuthenticatedClient } from "../shared/client.js";
 import { requireClient } from "../shared/client.js";
+import { clampPagination, paginationShape } from "../shared/pagination.js";
 
 export function registerTraceTools(server: McpServer, client: AuthenticatedClient | null) {
   // --- trace_list ---
@@ -15,19 +16,17 @@ export function registerTraceTools(server: McpServer, client: AuthenticatedClien
       environment: z.enum(["prod", "test"]).optional().describe(`Environment filter`),
       filters: z.record(z.string(), z.any()).optional().describe(`Additional filters. Format: {"field": {"operator": "<op>", "value": <val>}}. Operators: '' (exact), 'in', 'not', 'icontains', 'startswith', 'gt', 'gte', 'lt', 'lte', 'empty', 'not_empty'. Examples: {"span_count": {"operator": "gte", "value": 5}}, {"duration": {"operator": "gte", "value": 10.0}}, {"error_count": {"operator": "gte", "value": 1}}, {"name": {"operator": "", "value": "my-workflow"}}`),
       sort_by: z.string().optional().describe(`Sort field (default: -timestamp). Prefix with - for descending.`),
-      page: z.number().int().optional().describe(`Page number (default: 1)`),
-      page_size: z.number().int().optional().describe(`Page size (default: 5, max: 10)`)
+      ...paginationShape("trace_list")
     },
-    async ({ page_size = 5, page = 1, sort_by = "-timestamp", start_time, end_time, environment, filters }) => {
+    async ({ page_size, page, sort_by = "-timestamp", start_time, end_time, environment, filters }) => {
       const c = requireClient(client);
-      const limit = Math.min(page_size, 10);
+      const paging = clampPagination("trace_list", { page, page_size });
 
       const bodyFilters: Record<string, any> = { ...(filters || {}) };
 
       const result = await c.client.traces.listTraces({
         Authorization: c.auth,
-        page_size: limit,
-        page,
+        ...paging,
         sort_by,
         ...(start_time ? { start_time } : {}),
         ...(end_time ? { end_time } : {}),

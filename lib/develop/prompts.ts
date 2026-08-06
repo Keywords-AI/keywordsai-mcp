@@ -2,27 +2,26 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AuthenticatedClient } from "../shared/client.js";
 import { requireClient } from "../shared/client.js";
+import { clampPagination, paginationShape } from "../shared/pagination.js";
 
 export function registerPromptTools(server: McpServer, client: AuthenticatedClient | null) {
   // 1. List all Prompts
   server.tool(
     "prompt_list",
-    "List prompts for an organization (PAGINATED, default 5/page). Use for: browsing prompts, finding a prompt by name, or getting prompt_id values for other prompt tools. RETURNS per entry: prompt_id (string like 'prm_abc123'), name, description, tags, version (current draft version number), prompt_live_version_number (deployed version number, null if never deployed), is_read_only, model, message_count, system_preview. SCOPE: these fields describe where the prompt stands RIGHT NOW. This tool cannot answer anything about version history — how many versions exist, what an earlier version contained, or what changed between two. Use prompt_versions_list for history and prompt_version_get for a specific version's content. IMPORTANT: Always use prompt_id (string like 'prm_abc123') for all subsequent calls — never use the integer id.",
+    "List prompts for an organization (PAGINATED, default 20/page). Use for: browsing prompts, finding a prompt by name, or getting prompt_id values for other prompt tools. RETURNS per entry: prompt_id (string like 'prm_abc123'), name, description, tags, version (current draft version number), prompt_live_version_number (deployed version number, null if never deployed), is_read_only, model, message_count, system_preview. SCOPE: these fields describe where the prompt stands RIGHT NOW. This tool cannot answer anything about version history — how many versions exist, what an earlier version contained, or what changed between two. Use prompt_versions_list for history and prompt_version_get for a specific version's content. IMPORTANT: Always use prompt_id (string like 'prm_abc123') for all subsequent calls — never use the integer id.",
     {
       name: z.string().optional().describe("Filter by prompt name (contains)"),
-      page: z.number().optional().describe("Page number (default: 1)"),
-      page_size: z.number().optional().describe("Page size (default: 5, max: 10)"),
+      ...paginationShape("prompt_list"),
       sort_by: z
         .enum(["-id", "current_version__updated_at"])
         .optional()
         .describe("Sort field. Default: -id (newest first)."),
     },
-    async ({ name, page_size = 5, page = 1, sort_by }) => {
+    async ({ name, page_size, page, sort_by }) => {
       const c = requireClient(client);
       const data = await c.client.prompts.listPrompts({
         Authorization: c.auth,
-        page_size: Math.min(page_size, 10),
-        page,
+        ...clampPagination("prompt_list", { page, page_size }),
         // Name is a server-side filter, not a top-level field. Declaring it
         // without this mapping would silently return unfiltered results.
         ...(name ? { filters: { name: { operator: "icontains", value: [name] } } } : {}),
@@ -66,19 +65,17 @@ export function registerPromptTools(server: McpServer, client: AuthenticatedClie
   // 3. List versions of a specific Prompt
   server.tool(
     "prompt_versions_list",
-    "List all versions of a prompt (PAGINATED, default 10/page). Use to see version history and find which version to deploy. RETURNS per entry: version (int), description, model, readonly (bool — true=committed/deployable, false=draft), created_at, edited_by. prompt_deploy accepts both draft and committed versions (drafts are auto-committed before deployment).",
+    "List all versions of a prompt (PAGINATED, default 20/page). Use to see version history and find which version to deploy. RETURNS per entry: version (int), description, model, readonly (bool — true=committed/deployable, false=draft), created_at, edited_by. prompt_deploy accepts both draft and committed versions (drafts are auto-committed before deployment).",
     {
       prompt_id: z.string().describe("Prompt ID"),
-      page: z.number().optional().describe("Page number (default: 1)"),
-      page_size: z.number().optional().describe("Page size (default: 10, max: 25)"),
+      ...paginationShape("prompt_versions_list"),
     },
     async ({ prompt_id, page, page_size }) => {
       const c = requireClient(client);
       const data = await c.client.prompts.listPromptVersions({
         Authorization: c.auth,
         prompt_id,
-        ...(page !== undefined ? { page } : {}),
-        ...(page_size !== undefined ? { page_size } : {}),
+        ...clampPagination("prompt_versions_list", { page, page_size }),
       });
       return {
         content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],

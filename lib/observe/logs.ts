@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AuthenticatedClient } from "../shared/client.js";
 import { requireClient } from "../shared/client.js";
+import { clampPagination, paginationShape } from "../shared/pagination.js";
 
 export function registerLogTools(server: McpServer, client: AuthenticatedClient | null) {
   // --- log_list ---
@@ -19,14 +20,13 @@ export function registerLogTools(server: McpServer, client: AuthenticatedClient 
       prompt_id: z.string().optional().describe(`Filter by prompt ID (exact match)`),
       used_custom_credential: z.boolean().optional().describe(`Filter by credential type: true=customer credentials, false=managed credentials`),
       filters: z.record(z.string(), z.any()).optional().describe(`Generic filters object over request-log columns. Format: {"field": {"operator": "<op>", "value": <val>}}. Operators: '' (exact), 'in', 'not', 'icontains', 'startswith', 'gt', 'gte', 'lt', 'lte', 'empty', 'not_empty'. Supported fields (closed set): behaviors, completion_tokens, cost, custom_identifier, customer_identifier, deployment_name, environment, error_class, error_fingerprint, fault_domain, full_text, is_root_span, latency, log_method, log_type, metadata, model, note, organization_key_id, positive_feedback, prompt_cache_creation_tokens, prompt_cache_hit_tokens, prompt_id, prompt_name, prompt_tokens, prompt_version_number, provider_id, routing_time, scores, span_name, span_parent_id, span_workflow_name, start_time, status, status_code, thread_identifier, time_to_first_token, timestamp, tokens_per_second, total_request_tokens, trace_unique_id, unique_id, unique_organization_id, used_custom_credential. Custom metadata and per-evaluator scores use the 'metadata__' and 'scores__' prefixes with any key. Any other key is REJECTED with a validation_error, because the query layer would drop it and return a wider result. There is no dataset dimension here, use dataset_logs_summary or dataset_logs_list for dataset-scoped questions.`),
-      page: z.number().int().optional().describe(`Page number (default: 1)`),
-      page_size: z.number().int().optional().describe(`Page size (default: 5, max: 10)`),
+      ...paginationShape("log_list"),
       sort_by: z.string().optional().describe(`Sort field (default: -timestamp)`),
       include_fields: z.array(z.string()).optional().describe(`Fields to return per log entry. Default: unique_id, model, status, cost, latency, prompt_tokens, completion_tokens, tokens_per_second, time_to_first_token, timestamp, customer_identifier, prompt_name, storage_object_key, status_code. Override to add fields like environment, trace_unique_id, span_name, metadata, scores. Always include 'unique_id' if you plan to follow up with log_get.`)
     },
-    async ({ start_time, end_time, environment, model, status, customer_identifier, prompt_id, used_custom_credential, filters, page = 1, page_size = 5, sort_by = "-timestamp", include_fields }) => {
+    async ({ start_time, end_time, environment, model, status, customer_identifier, prompt_id, used_custom_credential, filters, page, page_size, sort_by = "-timestamp", include_fields }) => {
       const c = requireClient(client);
-      const limit = Math.min(page_size, 10);
+      const paging = clampPagination("log_list", { page, page_size });
 
       const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const clampedStart = new Date(start_time) < oneWeekAgo ? oneWeekAgo.toISOString() : start_time;
@@ -57,8 +57,7 @@ export function registerLogTools(server: McpServer, client: AuthenticatedClient 
         start_time: clampedStart,
         end_time,
         sort_by,
-        page_size: limit,
-        page,
+        ...paging,
         ...(environment ? { environment } : {}),
         fetch_filters: "false" as any,
         include_fields: fieldsStr,

@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AuthenticatedClient } from '../shared/client.js';
 import { requireClient, rawFetch } from '../shared/client.js';
+import { clampPagination, paginationShape } from '../shared/pagination.js';
 
 const GRADER_ID_DESCRIPTION =
   "Grader ID. This is an id, NOT a name: if all you have is the name the user said, call grader_list(name=...) first and pass the `id` it returns.";
@@ -12,21 +13,42 @@ export function registerEvaluatorTools(server: McpServer, client: AuthenticatedC
     "List graders (single-step evaluators) for an organization. Returns latest version of each grader. By default only the org's own graders are listed — public (Respan-managed) graders are hidden unless is_including_public_evaluators=true. ID SEMANTICS: a grader's `id` is its FAMILY id (stable across versions); `version_id` is the per-version row PK. This is the INVERSE of evaluators, whose `id` is the version PK and `workflow_id` the family. To list the user-visible evaluators themselves, use evaluator_list — NOT this tool.",
     {
       name: z.string().optional().describe('Filter by grader name (contains)'),
-      enabled: z.boolean().optional().describe('Filter by enabled status'),
+      score_value_type: z
+        .enum(['numerical', 'boolean', 'percentage', 'single_select', 'multi_select', 'json', 'text'])
+        .optional()
+        .describe('Filter by score type: numerical, boolean, percentage, single_select, multi_select, json, text.'),
+      starred: z.boolean().optional().describe('Filter to favourited graders only.'),
       is_including_public_evaluators: z
         .boolean()
         .optional()
         .describe("Include public (Respan-managed, org-independent) graders alongside the org's own (default: false). Use for 'what evaluators do you offer'."),
-      page: z.number().optional().describe('Page number (default: 1)'),
-      page_size: z.number().optional().describe('Page size (default: 10, max: 100)'),
+      ...paginationShape('grader_list'),
       sort_by: z.string().optional().describe('Sort field (default: name)'),
     },
-    async ({ page_size, page }) => {
+    async ({ name, score_value_type, starred, is_including_public_evaluators, page, page_size, sort_by }) => {
       const c = requireClient(client);
-      const data = await c.client.evaluators.listEvaluators({
-        Authorization: c.auth,
-        ...(page_size ? { page_size } : {}),
-        ...(page ? { page } : {}),
+      // Every field below must exist on the backing model. A filter on a field
+      // that does not is NOT a no-op: the server catches the FieldError and
+      // resets the whole query, returning the FULL unfiltered list and dropping
+      // the sibling filters in the same call. Narrow this set only against the
+      // model. (`enabled` used to be advertised here and did exactly that.)
+      const filters: Record<string, { operator: string; value: unknown }> = {};
+      if (name !== undefined) filters.name = { operator: 'icontains', value: name };
+      if (score_value_type !== undefined) filters.score_value_type = { operator: '', value: score_value_type };
+      if (starred !== undefined) filters.starred = { operator: '', value: starred };
+
+      // Filtering is POST-only on this endpoint. The SDK's GET list method
+      // cannot carry `filters`, so a name= call through it returned everything.
+      const q = new URLSearchParams();
+      const paging = clampPagination('grader_list', { page, page_size });
+      q.set('page', String(paging.page));
+      q.set('page_size', String(paging.page_size));
+      if (sort_by !== undefined) q.set('sort_by', sort_by);
+      if (is_including_public_evaluators) q.set('is_including_public_evaluators', 'true');
+
+      const data = await rawFetch(c, `/api/evaluators/list/?${q.toString()}`, {
+        method: 'POST',
+        body: Object.keys(filters).length > 0 ? { filters } : {},
       });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
@@ -198,16 +220,15 @@ export function registerEvaluatorTools(server: McpServer, client: AuthenticatedC
     'List all versions of a grader.',
     {
       grader_id: z.string().describe(GRADER_ID_DESCRIPTION),
-      page: z.number().optional().describe('Page number (default: 1)'),
-      page_size: z.number().optional().describe('Page size (default: 10)'),
+      ...paginationShape('grader_versions_list'),
     },
     async ({ grader_id, page, page_size }) => {
       const c = requireClient(client);
+      const paging = clampPagination('grader_versions_list', { page, page_size });
       const q = new URLSearchParams();
-      if (page !== undefined) q.set('page', String(page));
-      if (page_size !== undefined) q.set('page_size', String(page_size));
-      const qs = q.toString();
-      const path = `/api/evaluators/${grader_id}/versions/${qs ? `?${qs}` : ''}`;
+      q.set('page', String(paging.page));
+      q.set('page_size', String(paging.page_size));
+      const path = `/api/evaluators/${grader_id}/versions/?${q.toString()}`;
       const data = await rawFetch(c, path, { method: 'GET' });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
@@ -262,8 +283,24 @@ export function registerEvaluatorTools(server: McpServer, client: AuthenticatedC
       grader_id: z.string().describe(GRADER_ID_DESCRIPTION),
       user_confirmation: z.string().describe('REQUIRED: The exact grader name as typed by the user in chat.'),
     },
-    async ({ grader_id }) => {
+    async ({ grader_id, user_confirmation }) => {
       const c = requireClient(client);
+      // Declaring user_confirmation without checking it makes the gate
+      // decorative: the model supplies any string and the delete proceeds.
+      // Resolve the real name and refuse on mismatch, as the backend does.
+      const existing = await c.client.evaluators.retrieveEvaluator({ Authorization: c.auth, evaluator_id: grader_id }) as { name?: string };
+      const actualName = existing?.name ?? '';
+      if (user_confirmation !== actualName) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'confirmation_failed',
+              message: `You typed '${user_confirmation}' but the grader name is '${actualName}'. Ask the user to type the exact name. Nothing was deleted.`,
+            }, null, 2),
+          }],
+        };
+      }
       await c.client.evaluators.deleteEvaluator({ Authorization: c.auth, evaluator_id: grader_id });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify({ deleted: true, grader_id }, null, 2) }],

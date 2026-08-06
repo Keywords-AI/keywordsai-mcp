@@ -2,22 +2,21 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AuthenticatedClient } from '../shared/client.js';
 import { requireClient } from '../shared/client.js';
+import { clampPagination, paginationShape } from '../shared/pagination.js';
 
 export function registerDatasetTools(server: McpServer, client: AuthenticatedClient | null) {
   server.tool(
     'dataset_list',
     'List datasets for an organization.',
     {
-      page: z.number().optional().describe('Page number (default: 1)'),
-      page_size: z.number().optional().describe('Page size (default: 50, max: 100)'),
+      ...paginationShape('dataset_list'),
       sort_by: z.string().optional().describe('Sort field (default: -created_at). Prefix with - for descending.'),
     },
-    async ({ page_size = 50, page = 1, sort_by }) => {
+    async ({ page_size, page, sort_by }) => {
       const c = requireClient(client);
       const data = await c.client.datasets.listDatasets({
         Authorization: c.auth,
-        page_size,
-        page,
+        ...clampPagination('dataset_list', { page, page_size }),
         ...(sort_by ? { sort_by } : {}),
       });
       return {
@@ -109,8 +108,7 @@ export function registerDatasetTools(server: McpServer, client: AuthenticatedCli
     `List logs in a dataset with pagination and optional filtering. Filter Format: {"field": {"operator": "<op>", "value": <val>}}. Operators: '' (exact), 'in', 'not', 'icontains', 'startswith', 'gt', 'gte', 'lt', 'lte', 'empty', 'not_empty'. String fields: model, status, customer_identifier, provider_id, prompt_name. Numeric fields (support gte/lte/gt/lt): latency, cost, tokens_per_second, prompt_tokens, completion_tokens.`,
     {
       dataset_id: z.string().describe('Dataset ID'),
-      page: z.number().optional().describe('Page number (default: 1)'),
-      page_size: z.number().optional().describe('Page size (default: 10, max: 100)'),
+      ...paginationShape('dataset_logs_list'),
       sort_by: z.string().optional().describe('Sort field (default: unique_id). Prefix with - for descending.'),
       include_fields: z.string().optional().describe('Comma-separated list of response fields to include.'),
       filters: z
@@ -126,8 +124,7 @@ export function registerDatasetTools(server: McpServer, client: AuthenticatedCli
       const data = await c.client.datasets.listDatasetLogs({
         Authorization: c.auth,
         dataset_id,
-        ...(page ? { page } : {}),
-        ...(page_size ? { page_size } : {}),
+        ...clampPagination('dataset_logs_list', { page, page_size }),
         ...(sort_by ? { sort_by } : {}),
         ...(include_fields ? { include_fields } : {}),
         ...(filters ? { filters } : {}),
@@ -193,8 +190,24 @@ export function registerDatasetTools(server: McpServer, client: AuthenticatedCli
       dataset_id: z.string().describe('Dataset ID'),
       user_confirmation: z.string().describe('REQUIRED: The exact dataset name as typed by the user in chat.'),
     },
-    async ({ dataset_id }) => {
+    async ({ dataset_id, user_confirmation }) => {
       const c = requireClient(client);
+      // Declaring user_confirmation without checking it makes the gate
+      // decorative: the model supplies any string and the delete proceeds.
+      // Resolve the real name and refuse on mismatch, as the backend does.
+      const existing = await c.client.datasets.retrieveDataset({ Authorization: c.auth, dataset_id }) as { name?: string };
+      const actualName = existing?.name ?? '';
+      if (user_confirmation !== actualName) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'confirmation_failed',
+              message: `You typed '${user_confirmation}' but the dataset name is '${actualName}'. Ask the user to type the exact name. Nothing was deleted.`,
+            }, null, 2),
+          }],
+        };
+      }
       await c.client.datasets.deleteDataset({ Authorization: c.auth, dataset_id });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify({ deleted: true, dataset_id }, null, 2) }],
@@ -323,16 +336,14 @@ export function registerDatasetTools(server: McpServer, client: AuthenticatedCli
     'List evaluation run results for a dataset. Shows past eval runs with status and results.',
     {
       dataset_id: z.string().describe('The unique identifier of the dataset.'),
-      page: z.number().optional().describe('Page number.'),
-      page_size: z.number().optional().describe('Results per page (max 100).'),
+      ...paginationShape('dataset_eval_runs_list'),
     },
     async ({ dataset_id, page, page_size }) => {
       const c = requireClient(client);
       const data = await c.client.datasets.listDatasetEvalRuns({
         Authorization: c.auth,
         dataset_id,
-        ...(page ? { page } : {}),
-        ...(page_size ? { page_size } : {}),
+        ...clampPagination('dataset_eval_runs_list', { page, page_size }),
       });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],

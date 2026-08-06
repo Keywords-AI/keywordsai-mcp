@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AuthenticatedClient } from "../shared/client.js";
 import { requireClient, rawFetch } from "../shared/client.js";
+import { clampPagination, paginationShape } from "../shared/pagination.js";
 
 /**
  * Typed-noun tools over the shared /api/workflows/ resource.
@@ -236,8 +237,7 @@ const REGISTRARS: Record<WorkflowOp, Registrar> = {
           .describe(
             `Additional filters keyed by field name, e.g. { "name": { "value": ["cost"], "operator": "icontains" } }. The type filter is pinned to ${spec.type} and cannot be overridden or widened.`
           ),
-        page: z.number().optional().describe("Page number (default 1)."),
-        page_size: z.number().optional().describe("Results per page (default 20)."),
+        ...paginationShape(`${spec.noun}_list`),
         sort_by: z.string().optional().describe("Sort field. Prefix with - for descending (default -created_at)."),
       },
       async (args) => {
@@ -246,8 +246,7 @@ const REGISTRARS: Record<WorkflowOp, Registrar> = {
           Authorization: c.auth,
           // Pinned last so a caller-supplied type filter cannot widen the scope.
           filters: { ...(args.filters ?? {}), type: { value: [spec.type], operator: "eq" } },
-          ...(args.page ? { page: args.page } : {}),
-          ...(args.page_size ? { page_size: args.page_size } : {}),
+          ...clampPagination(`${spec.noun}_list`, { page: args.page, page_size: args.page_size }),
           ...(args.sort_by ? { sort_by: args.sort_by } : {}),
         });
         return {
@@ -369,16 +368,14 @@ const REGISTRARS: Record<WorkflowOp, Registrar> = {
       description,
       {
         ...idField(spec),
-        page: z.number().optional().describe("Page number (default 1)."),
-        page_size: z.number().optional().describe("Results per page (default 20)."),
+        ...paginationShape(`${spec.noun}_version_list`),
       },
       async (args) => {
         const c = requireClient(client);
         const data = await c.client.workflows.listWorkflowVersions({
           Authorization: c.auth,
           workflow_id: readIdArg(args, spec),
-          ...(args.page ? { page: args.page } : {}),
-          ...(args.page_size ? { page_size: args.page_size } : {}),
+          ...clampPagination(`${spec.noun}_version_list`, { page: args.page, page_size: args.page_size }),
         });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],

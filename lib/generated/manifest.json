@@ -1,7 +1,7 @@
 {
  "generatedFrom": "backend utils/mcp/tool_bridge.register_tools(AGENT_SAFE_DOMAINS)",
  "toolCount": 161,
- "registeredCount": 26,
+ "registeredCount": 18,
  "tools": [
   {
    "name": "annotation_item_get",
@@ -86,42 +86,21 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
-   "route": {
-    "method": "POST",
-    "path": "/api/annotation-items/list/",
-    "sendsBody": true,
-    "argMap": {
-     "status": [
-      "body.filters.status.value"
-     ],
-     "source_type": [
-      "body.filters.source_type.value"
-     ],
-     "assignee": [
-      "body.filters.assignee.value"
-     ],
-     "sort_by": [
-      "query.sort_by"
-     ],
-     "page": [
-      "query.page"
-     ],
-     "page_size": [
-      "query.page_size"
-     ]
-    }
-   },
-   "excluded": null
+   "route": null,
+   "excluded": "route verified but 1 argument(s) unmapped: page_size"
   },
   {
    "name": "annotation_queue_list",
@@ -143,39 +122,21 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
-   "route": {
-    "method": "POST",
-    "path": "/api/annotation-items/queue/",
-    "sendsBody": true,
-    "argMap": {
-     "status": [
-      "body.filters.status.value"
-     ],
-     "source_type": [
-      "body.filters.source_type.value"
-     ],
-     "sort_by": [
-      "query.sort_by"
-     ],
-     "page": [
-      "query.page"
-     ],
-     "page_size": [
-      "query.page_size"
-     ]
-    }
-   },
-   "excluded": null
+   "route": null,
+   "excluded": "route verified but 1 argument(s) unmapped: page_size"
   },
   {
    "name": "annotation_queue_summary",
@@ -247,11 +208,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 50, max: 200)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
@@ -644,18 +608,21 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 1 argument(s) unmapped: is_including_public_workflows"
+   "excluded": "route verified but 2 argument(s) unmapped: is_including_public_workflows, page_size"
   },
   {
    "name": "automation_run_history",
@@ -951,11 +918,14 @@
     "properties": {
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "automation_id": {
       "type": "string",
@@ -994,11 +964,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -1008,35 +981,8 @@
     "required": []
    },
    "readOnly": true,
-   "route": {
-    "method": "POST",
-    "path": "/payment/credit-transactions/list/",
-    "sendsBody": true,
-    "argMap": {
-     "transaction_type": [
-      "body.filters.transaction_type.value"
-     ],
-     "source_type": [
-      "body.filters.source_type.value"
-     ],
-     "start_time": [
-      "query.start_time"
-     ],
-     "end_time": [
-      "query.end_time"
-     ],
-     "page": [
-      "query.page"
-     ],
-     "page_size": [
-      "query.page_size"
-     ],
-     "sort_by": [
-      "query.sort_by"
-     ]
-    }
-   },
-   "excluded": null
+   "route": null,
+   "excluded": "route verified but 1 argument(s) unmapped: page_size"
   },
   {
    "name": "credit_transactions_summary",
@@ -1950,11 +1896,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10, max: 100)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -2095,11 +2044,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10, max: 25)"
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Rows per page (default 5, max 10). Larger values are clamped to 10, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -2530,11 +2482,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10, max: 100)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -2544,26 +2499,8 @@
     "required": []
    },
    "readOnly": true,
-   "route": {
-    "method": "POST",
-    "path": "/api/workflows/list/",
-    "sendsBody": true,
-    "argMap": {
-     "name": [
-      "body.filters.name.value"
-     ],
-     "page": [
-      "query.page"
-     ],
-     "page_size": [
-      "query.page_size"
-     ],
-     "sort_by": [
-      "query.sort_by"
-     ]
-    }
-   },
-   "excluded": null
+   "route": null,
+   "excluded": "route verified but 1 argument(s) unmapped: page_size"
   },
   {
    "name": "evaluator_run_history",
@@ -2865,11 +2802,14 @@
     "properties": {
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "evaluator_id": {
       "type": "string",
@@ -3077,11 +3017,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10, max: 25)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
@@ -3138,11 +3081,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10, max: 25)"
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Rows per page (default 5, max 10). Larger values are clamped to 10, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -3385,9 +3331,13 @@
       "type": "string",
       "description": "Filter by evaluator name (contains)"
      },
-     "enabled": {
+     "score_value_type": {
+      "type": "string",
+      "description": "Filter by score type: numerical, boolean, percentage, single_select, multi_select, json, text."
+     },
+     "starred": {
       "type": "boolean",
-      "description": "Filter by enabled status"
+      "description": "Filter to favourited graders only."
      },
      "is_including_public_evaluators": {
       "type": "boolean",
@@ -3395,11 +3345,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10, max: 100)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -3410,11 +3363,11 @@
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 2 argument(s) unmapped: enabled, is_including_public_evaluators"
+   "excluded": "route verified but 3 argument(s) unmapped: is_including_public_evaluators, page_size, starred"
   },
   {
    "name": "grader_run",
-   "description": "Test-run a grader with sample inputs. Returns the grader's score and reasoning. Always run before committing to verify the grader works correctly. inputs must include at least \"input\" and \"output\" keys with realistic sample data. Example: {\"evaluator_id\": \"abc123\", \"inputs\": {\"input\": \"What is 2+2?\", \"output\": \"The answer is 4.\"}}",
+   "description": "Test-run a grader with sample inputs. Returns the grader's score and reasoning. Always run before committing to verify the grader works correctly. inputs must include at least \"input\" and \"output\" keys with realistic sample data. Example: {\"grader_id\": \"abc123\", \"inputs\": {\"input\": \"What is 2+2?\", \"output\": \"The answer is 4.\"}}",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -3503,11 +3456,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": [
@@ -3546,18 +3502,21 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20, max: 100)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 2 argument(s) unmapped: is_active, is_managed"
+   "excluded": "route verified but 3 argument(s) unmapped: is_active, is_managed, page_size"
   },
   {
    "name": "integration_summary",
@@ -3620,30 +3579,21 @@
     "properties": {
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
-   "route": {
-    "method": "GET",
-    "path": "/api/limit-policies/",
-    "sendsBody": false,
-    "argMap": {
-     "page": [
-      "query.page"
-     ],
-     "page_size": [
-      "query.page_size"
-     ]
-    }
-   },
-   "excluded": null
+   "route": null,
+   "excluded": "route verified but 1 argument(s) unmapped: page_size"
   },
   {
    "name": "limit_policy_state_list",
@@ -3652,29 +3602,22 @@
     "type": "object",
     "properties": {
      "page": {
-      "type": "integer"
+      "type": "integer",
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
-      "type": "integer"
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
-   "route": {
-    "method": "POST",
-    "path": "/api/limit-policies/list/",
-    "sendsBody": true,
-    "argMap": {
-     "page": [
-      "query.page"
-     ],
-     "page_size": [
-      "query.page_size"
-     ]
-    }
-   },
-   "excluded": null
+   "route": null,
+   "excluded": "route verified but 1 argument(s) unmapped: page_size"
   },
   {
    "name": "limit_policy_summary",
@@ -3836,11 +3779,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 5, max: 10)"
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Rows per page (default 5, max 10). Larger values are clamped to 10, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -3875,11 +3821,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Results per page (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": [
@@ -3887,23 +3836,8 @@
     ]
    },
    "readOnly": true,
-   "route": {
-    "method": "GET",
-    "path": "/api/logs/ZZlogidZZ/scores/",
-    "sendsBody": false,
-    "argMap": {
-     "log_id": [
-      "path"
-     ],
-     "page": [
-      "query.page"
-     ],
-     "page_size": [
-      "query.page_size"
-     ]
-    }
-   },
-   "excluded": null
+   "route": null,
+   "excluded": "route verified but 1 argument(s) unmapped: page_size"
   },
   {
    "name": "log_summary",
@@ -4029,18 +3963,21 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20, max: 100)"
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Rows per page (default 20, max 200). Larger values are clamped to 200, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 1 argument(s) unmapped: affiliation_category"
+   "excluded": "route verified but 2 argument(s) unmapped: affiliation_category, page_size"
   },
   {
    "name": "monitor_commit",
@@ -4253,18 +4190,21 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 1 argument(s) unmapped: is_including_public_workflows"
+   "excluded": "route verified but 2 argument(s) unmapped: is_including_public_workflows, page_size"
   },
   {
    "name": "monitor_run_history",
@@ -4560,11 +4500,14 @@
     "properties": {
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "monitor_id": {
       "type": "string",
@@ -4672,30 +4615,21 @@
     "properties": {
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
-   "route": {
-    "method": "GET",
-    "path": "/user/organization-notification-methods/",
-    "sendsBody": false,
-    "argMap": {
-     "page": [
-      "query.page"
-     ],
-     "page_size": [
-      "query.page_size"
-     ]
-    }
-   },
-   "excluded": null
+   "route": null,
+   "excluded": "route verified but 1 argument(s) unmapped: page_size"
   },
   {
    "name": "notification_method_update",
@@ -4757,11 +4691,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 100)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": [
@@ -5130,11 +5067,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 5, max: 10)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "sort_by": {
       "type": "string",
@@ -5393,11 +5333,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10, max: 25)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": [
@@ -5618,13 +5561,13 @@
      "page": {
       "type": "integer",
       "minimum": 1,
-      "description": "Page number (default: 1)"
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
       "minimum": 1,
       "maximum": 200,
-      "description": "Page size (default: 50, max: 200)"
+      "description": "Rows per page (default 50, max 200). Larger values are clamped to 200, not rejected."
      }
     },
     "required": []
@@ -5844,18 +5787,21 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 1 argument(s) unmapped: is_including_public_workflows"
+   "excluded": "route verified but 2 argument(s) unmapped: is_including_public_workflows, page_size"
   },
   {
    "name": "report_run_history",
@@ -6151,11 +6097,14 @@
     "properties": {
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      },
      "report_id": {
       "type": "string",
@@ -6263,18 +6212,21 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 20)"
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Rows per page (default 20, max 50). Larger values are clamped to 50, not rejected."
      }
     },
     "required": []
    },
    "readOnly": true,
    "route": null,
-   "excluded": "route verified but 1 argument(s) unmapped: environment"
+   "excluded": "route verified but 2 argument(s) unmapped: environment, page_size"
   },
   {
    "name": "thread_get",
@@ -6336,11 +6288,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 10)"
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Rows per page (default 5, max 10). Larger values are clamped to 10, not rejected."
      }
     },
     "required": []
@@ -6442,11 +6397,14 @@
      },
      "page": {
       "type": "integer",
-      "description": "Page number (default: 1)"
+      "minimum": 1,
+      "description": "Page number, 1-based (default 1)."
      },
      "page_size": {
       "type": "integer",
-      "description": "Page size (default: 5, max: 10)"
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Rows per page (default 5, max 10). Larger values are clamped to 10, not rejected."
      }
     },
     "required": []

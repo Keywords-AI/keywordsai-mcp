@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AuthenticatedClient } from "../shared/client.js";
 import { requireClient } from "../shared/client.js";
+import { clampPagination, paginationShape } from "../shared/pagination.js";
 
 export function registerUserTools(server: McpServer, client: AuthenticatedClient | null) {
   // --- List Customers ---
@@ -13,8 +14,6 @@ export function registerUserTools(server: McpServer, client: AuthenticatedClient
 Retrieves a paginated list of customers who have made API requests through Respan.
 
 QUERY PARAMETERS:
-- page_size: Number of customers per page (max 50 for MCP, API supports up to 1000)
-- page: Page number (default 1)
 - sort_by: Sort field. Prefix with - for descending order.
   Examples: -total_cost (highest spending first), -number_of_requests (most active first)
 - environment: Filter by environment ("prod" or "test")
@@ -36,8 +35,7 @@ RESPONSE FIELDS:
 
 Use this to identify top users by cost, most active users, or find specific customers.`,
     {
-      page_size: z.number().optional().describe("Customers per page (1-50, default 20)"),
-      page: z.number().optional().describe("Page number (default 1)"),
+      ...paginationShape("customer_list"),
       sort_by: z.enum([
         "customer_identifier", "-customer_identifier",
         "email", "-email",
@@ -52,12 +50,11 @@ Use this to identify top users by cost, most active users, or find specific cust
       ]).optional().describe("Sort field. Prefix with - for descending order. Default: -first_seen"),
       environment: z.enum(["prod", "test"]).optional().describe("Filter by environment: 'prod' or 'test'")
     },
-    async ({ page_size = 20, page = 1, sort_by = "-first_seen", environment }) => {
+    async ({ page_size, page, sort_by = "-first_seen", environment }) => {
       const c = requireClient(client);
       const pageResult = await c.client.users.listCustomers({
         Authorization: c.auth,
-        page_size: Math.min(page_size, 50),
-        page,
+        ...clampPagination("customer_list", { page, page_size }),
         sort_by,
         ...(environment ? { environment } : {}),
       });

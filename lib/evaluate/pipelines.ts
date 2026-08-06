@@ -17,6 +17,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AuthenticatedClient } from '../shared/client.js';
 import { requireClient, rawFetch } from '../shared/client.js';
+import { clampPagination, paginationShape } from '../shared/pagination.js';
 
 const BLOCKLY_EVAL_TASK_ID_PREFIX = 'blockly_hidden_eval_';
 const BLOCKLY_EVAL_LABEL_PREFIX = 'blockly_hidden_eval_';
@@ -327,22 +328,28 @@ export function registerEvaluationPipelineTools(
     "List the user-visible evaluators (V2). Returns all evaluators for the organization. This is the data shown on the Evaluators page. RETURNS per row: `id` (version PK — the id experiment_create.evaluator_workflow_ids and scores__<id> sort keys want) and `workflow_id` (family id). Graders (the building blocks) are listed by grader_list, not here. No row for a name the user called an evaluator does NOT mean it is absent: users say 'evaluator' for a bare grader too. Check grader_list for that name before reporting it missing, and test a grader with grader_run.",
     {
       name: z.string().optional().describe('Filter by evaluator name (contains)'),
-      page: z.number().optional().describe('Page number (default: 1)'),
-      page_size: z.number().optional().describe('Page size (default: 10, max: 100)'),
+      ...paginationShape('evaluator_list'),
       sort_by: z.string().optional().describe('Sort field. Default: -created_at'),
     },
     async ({ name, page, page_size, sort_by }) => {
       const c = requireClient(client);
+      const paging = clampPagination('evaluator_list', { page, page_size });
       const q = new URLSearchParams();
-      if (page !== undefined) q.set('page', String(page));
-      if (page_size !== undefined) q.set('page_size', String(page_size));
-      if (name) q.set('name', name);
+      q.set('page', String(paging.page));
+      q.set('page_size', String(paging.page_size));
       if (sort_by) q.set('sort_by', sort_by);
-      const qs = q.toString();
-      const path = `/api/workflows/list/${qs ? `?${qs}` : ''}`;
-      const data = await rawFetch(c, path, {
+
+      // `name` must ride in the body. An unrecognized query param is parsed as a
+      // metadata filter and blows away the whole filter set, `type` included, so
+      // a name= call sent that way returns every workflow kind, not evaluators.
+      const filters: Record<string, { value: unknown; operator: string }> = {
+        type: { value: ['evaluators'], operator: 'eq' },
+      };
+      if (name) filters.name = { value: name, operator: 'icontains' };
+
+      const data = await rawFetch(c, `/api/workflows/list/?${q.toString()}`, {
         method: 'POST',
-        body: { filters: { type: { value: ['evaluators'], operator: 'eq' } } },
+        body: { filters },
       });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
