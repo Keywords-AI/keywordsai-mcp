@@ -8,11 +8,11 @@ export function registerExperimentTools(
   client: AuthenticatedClient | null
 ) {
   server.tool(
-    "list_experiments",
-    "List all experiments in your organization.",
+    "experiment_list",
+    "List experiments. Returns name, dataset, status, progress, workflow_count, tags.",
     {
-      page_size: z.number().optional().describe("Results per page."),
-      page: z.number().optional().describe("Page number (default 1)."),
+      page: z.number().optional().describe("Page number (default: 1)"),
+      page_size: z.number().optional().describe("Page size (default: 10, max: 25)"),
     },
     async ({ page_size, page }) => {
       const c = requireClient(client);
@@ -28,12 +28,10 @@ export function registerExperimentTools(
   );
 
   server.tool(
-    "get_experiment",
-    "Retrieve detailed information about a specific experiment by its ID.",
+    "experiment_get",
+    "Get full experiment details by ID, including workflow configuration, evaluator version IDs, dataset, status, progress, and timestamps.",
     {
-      experiment_id: z
-        .string()
-        .describe("Unique experiment identifier (from list_experiments)"),
+      experiment_id: z.string().describe("Experiment ID"),
     },
     async ({ experiment_id }) => {
       const c = requireClient(client);
@@ -48,75 +46,32 @@ export function registerExperimentTools(
   );
 
   server.tool(
-    "create_experiment",
-    `Create and run an experiment. Processes a dataset's inputs through a workflow chain (prompt / model / passthrough) and scores results with evaluator pipelines.
-
-REQUIRED: dataset_id, workflow, evaluator_workflow_ids.
-
-WORKFLOW TYPES (these are how each dataset row produces an output):
-- "prompt": Use a saved prompt. Config: { prompt_id, version (optional) }
-- "completion": Direct model completion. Config: { model, temperature, max_tokens, top_p, response_format, tools, ... }
-- "duplicate": Passthrough — skip generation and just score the dataset's existing outputs. Use when your dataset already has outputs (e.g. logs imported from prod) and you only want to evaluate them.
-- "condition": Branch based on field values. Config: { condition_policy: { "event.<field>": { operator, value } } }
-
-EVALUATOR_WORKFLOW_IDS:
-Pass PIPELINE IDs (from list_evaluation_pipelines or create_evaluation_pipeline — the "id" field, NOT "workflow_id"). These pipelines score each row after the workflow completes.
-
-EXAMPLE — Compare two models on a dataset:
-{
-  "name": "GPT-4o vs Claude",
-  "dataset_id": "ds_abc",
-  "workflow": [
-    { "type": "completion", "config": { "model": "openai/gpt-4o", "temperature": 0 } }
-  ],
-  "evaluator_workflow_ids": ["<pipeline_id_for_quality>"]
-}
-
-EXAMPLE — Score existing dataset outputs without re-running a model:
-{
-  "name": "Score existing outputs",
-  "dataset_id": "ds_with_outputs",
-  "workflow": [
-    { "type": "duplicate", "config": { "name": "passthrough" } }
-  ],
-  "evaluator_workflow_ids": ["<pipeline_id>"]
-}
-
-EXAMPLE — Test a saved prompt version:
-{
-  "name": "Prompt v3",
-  "dataset_id": "ds_abc",
-  "workflow": [
-    { "type": "prompt", "config": { "prompt_id": "prompt_xyz", "version": "3" } }
-  ],
-  "evaluator_workflow_ids": ["<pipeline_id>"]
-}`,
+    "experiment_create",
+    "Create and run an experiment. Processes a dataset through workflow tasks (prompt → completion) and scores results with evaluators. Returns experiment object with status. Workflow types: 'prompt' (test a saved prompt on data — needs prompt_id), 'completion' (run a raw model on data — needs model), 'duplicate' (passthrough for scoring existing data as-is), 'condition' (needs condition_policy). evaluator_workflow_ids wants each evaluator's version PK `id` (from evaluator_list/create) — NOT the evaluator's `workflow_id` (family) and NOT a grader id. Wrong id type is the top cause of 404s here; on rejection, list evaluators and check which field the UUID matches.",
     {
-      dataset_id: z.string().describe("Dataset ID to run the experiment against."),
+      dataset_id: z.string().describe("Dataset ID to process"),
       workflow: z
         .array(
           z.object({
-            type: z
-              .enum(["prompt", "completion", "duplicate", "condition"])
-              .describe("Workflow type: prompt (saved prompt), completion (raw model call), duplicate (passthrough — score existing dataset outputs), condition (branch)."),
+            type: z.enum(["prompt", "completion", "duplicate", "condition"]),
             config: z
               .record(z.any())
-              .describe("Type-specific config. prompt: {prompt_id, version?}. completion: {model, temperature, max_tokens, response_format?, tools?, ...}. duplicate: {name?}. condition: {condition_policy: {<field>: {operator, value}}}."),
+              .describe("Type-specific config. prompt: {prompt_id}, completion: {model, temperature, ...}, duplicate: {name}"),
           })
         )
-        .describe("Workflow tasks executed in order for each dataset row."),
+        .describe("Workflow tasks in execution order. Each item: {type, config}. Types: prompt, completion, duplicate, condition."),
       evaluator_workflow_ids: z
         .array(z.string())
-        .describe("Evaluator PIPELINE IDs (the 'id' from list_evaluation_pipelines / create_evaluation_pipeline, NOT 'workflow_id'). At least one required."),
-      name: z.string().optional().describe("Experiment name."),
-      description: z.string().optional().describe("Experiment description."),
-      batch_size: z.number().optional().describe("Rows processed per batch (default: 100)."),
-      concurrency: z.number().optional().describe("Concurrent workers (default: 15)."),
-      enable_tracing: z.boolean().optional().describe("Create trace logs for each row (default: true)."),
+        .describe("Evaluator version IDs (version PK) (the 'id' field from evaluator_list or evaluator_create, NOT 'workflow_id'). These evaluators score each log after the workflow completes."),
+      name: z.string().optional().describe("Experiment name"),
+      description: z.string().optional().describe("Experiment description"),
+      batch_size: z.number().optional().describe("Batch size for processing (default: 100)"),
+      concurrency: z.number().optional().describe("Concurrent workers (default: 15)"),
+      enable_tracing: z.boolean().optional().describe("Create trace logs (default: true)"),
     },
     async ({ dataset_id, workflow, evaluator_workflow_ids, name, description, batch_size, concurrency, enable_tracing }) => {
       if (!evaluator_workflow_ids?.length) {
-        throw new Error("evaluator_workflow_ids is required. At least one evaluator pipeline ID is needed. Use list_evaluation_pipelines or create_evaluation_pipeline first.");
+        throw new Error("evaluator_workflow_ids is required. At least one evaluator version ID is needed. Use evaluator_list or evaluator_create first.");
       }
       const c = requireClient(client);
       const normalizedWorkflow = workflow.map(w => ({ ...w, config: w.config || {} }));
@@ -138,12 +93,10 @@ EXAMPLE — Test a saved prompt version:
   );
 
   server.tool(
-    "list_experiment_spans",
-    "List all spans (execution traces) for a specific experiment.",
+    "experiment_logs_list",
+    "List logs/traces for an experiment. Returns traces with scores, cost, tokens, latency (input/output content is stripped — use experiment_log_get for full details). Rows without a populated scores field mean the experiment is still running or had no evaluator attached — report that honestly, never treat it as a zero score.",
     {
-      experiment_id: z
-        .string()
-        .describe("Unique experiment identifier (from list_experiments)"),
+      experiment_id: z.string().describe("Experiment ID"),
     },
     async ({ experiment_id }) => {
       const c = requireClient(client);
@@ -158,15 +111,13 @@ EXAMPLE — Test a saved prompt version:
   );
 
   server.tool(
-    "get_experiment_span",
-    "Retrieve detailed information about a specific span within an experiment.",
+    "experiment_log_get",
+    "Get full details of a single experiment log/trace by ID. Returns complete input, output, expected_output, scores with evaluator reasoning, span tree, and all metrics. Use this after experiment_logs_list to drill into specific logs for analysis.",
     {
-      experiment_id: z
-        .string()
-        .describe("Unique experiment identifier (from list_experiments)"),
+      experiment_id: z.string().describe("Experiment ID"),
       log_id: z
         .string()
-        .describe("Unique span/log identifier (from list_experiment_spans)"),
+        .describe("Log/trace ID (the 'id' field from experiment_logs_list results)"),
     },
     async ({ experiment_id, log_id }) => {
       const c = requireClient(client);
@@ -182,10 +133,13 @@ EXAMPLE — Test a saved prompt version:
   );
 
   server.tool(
-    "delete_experiment",
-    "Permanently delete an experiment and its spans. This action cannot be undone.",
+    "experiment_delete",
+    "Delete an experiment. DANGEROUS: You MUST ask the user to confirm the experiment name before deleting.",
     {
-      experiment_id: z.string().describe("Unique experiment identifier (from list_experiments)"),
+      experiment_id: z.string().describe("Experiment ID"),
+      user_confirmation: z
+        .string()
+        .describe("REQUIRED: The exact experiment name as typed by the user."),
     },
     async ({ experiment_id }) => {
       const c = requireClient(client);
@@ -200,13 +154,11 @@ EXAMPLE — Test a saved prompt version:
   );
 
   server.tool(
-    "get_experiment_score_averages",
-    `Compute average score per evaluator for an experiment by walking the spans client-side.
-
-Use this when the backend summary/histogram endpoints return empty score aggregates (known issue on some experiments). Returns avg, min, max, and count per evaluator. Pages through up to max_spans (default 500).`,
+    "experiment_logs_summary",
+    `Get aggregate score statistics for an experiment's logs, summarized by evaluator. Computed client-side by walking the experiment's logs, so it also works when the backend summary and histogram endpoints return empty score aggregates (a known issue on some experiments). Returns avg, min, max and count per evaluator. Walks up to max_spans logs (default 500).`,
     {
-      experiment_id: z.string().describe("Unique experiment identifier"),
-      max_spans: z.number().optional().describe("Maximum spans to walk (default: 500). Increase for large experiments."),
+      experiment_id: z.string().describe("Experiment ID"),
+      max_spans: z.number().optional().describe("Maximum logs to walk (default: 500). Increase for large experiments."),
     },
     async ({ experiment_id, max_spans = 500 }) => {
       const c = requireClient(client);

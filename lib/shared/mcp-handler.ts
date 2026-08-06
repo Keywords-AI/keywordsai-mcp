@@ -12,7 +12,7 @@ import { registerEvaluatorTools } from '../evaluate/evaluators.js';
 import { registerDatasetTools } from '../evaluate/datasets.js';
 import { registerEvaluationPipelineTools } from '../evaluate/pipelines.js';
 import { registerWorkflowTools } from '../develop/workflows.js';
-import { registerSyncedTools } from '../generated/register.js';
+import { recordRegisteredNames, registerSyncedTools } from '../generated/register.js';
 
 function createServer(client: AuthenticatedClient | null, enabledTools?: Set<string>): McpServer {
   const server = new McpServer({
@@ -29,6 +29,10 @@ function createServer(client: AuthenticatedClient | null, enabledTools?: Set<str
     };
   }
 
+  // Names claimed by the hand-written modules below; the generated layer
+  // defers to them instead of silently overwriting.
+  const handWritten = recordRegisteredNames(server);
+
   registerLogTools(server, client);
   registerTraceTools(server, client);
   registerUserTools(server, client);
@@ -38,7 +42,7 @@ function createServer(client: AuthenticatedClient | null, enabledTools?: Set<str
   registerDatasetTools(server, client);
   registerEvaluationPipelineTools(server, client);
   registerWorkflowTools(server, client);
-  registerSyncedTools(server, client);
+  registerSyncedTools(server, client, handWritten);
 
   return server;
 }

@@ -7,7 +7,7 @@ import { requireClient } from "../shared/client.js";
 export function registerUserTools(server: McpServer, client: AuthenticatedClient | null) {
   // --- List Customers ---
   server.tool(
-    "list_customers",
+    "customer_list",
     `List customers/users with pagination and sorting.
 
 Retrieves a paginated list of customers who have made API requests through Respan.
@@ -73,7 +73,7 @@ Use this to identify top users by cost, most active users, or find specific cust
 
   // --- Get Customer Detail ---
   server.tool(
-    "get_customer_detail",
+    "customer_get",
     `Retrieve detailed information about a specific customer including budget usage.
 
 Returns customer profile and budget data:
@@ -98,11 +98,11 @@ OTHER:
 - has_write_access: Whether customer has write access
 - updated_at: Last update timestamp
 
-NOTE: For usage metrics (requests, tokens, cost, latency), use get_spans_summary with a customer_identifier filter instead.
+NOTE: For usage metrics (requests, tokens, cost, latency), use log_summary with a customer_identifier filter instead.
 
-Use list_customers first to find customer_identifier, then use this for full details.`,
+Use customer_list first to find customer_identifier, then use this for full details.`,
     {
-      customer_identifier: z.string().describe("Unique identifier of the customer (from list_customers)"),
+      customer_identifier: z.string().describe("Unique identifier of the customer (from customer_list)"),
       environment: z.enum(["prod", "test"]).optional().describe("Environment: 'prod' or 'test' (default: 'prod')")
     },
     async ({ customer_identifier, environment }) => {

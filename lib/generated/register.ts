@@ -83,12 +83,39 @@ export function buildRequest(route: ToolRoute, args: Record<string, unknown>): B
   };
 }
 
-export function registerSyncedTools(server: McpServer, client: AuthenticatedClient | null): void {
+/**
+ * Records every tool name registered after this is installed.
+ *
+ * Hand-written modules and this generated layer both use backend names now, so
+ * they can collide. The SDK overwrites a duplicate registration silently, which
+ * would make the winner depend on call order. Recording the names lets the
+ * generated layer defer explicitly instead.
+ */
+export function recordRegisteredNames(server: McpServer): Set<string> {
+  const names = new Set<string>();
+  const original = server.tool.bind(server);
+  (server as unknown as { tool: (...args: unknown[]) => unknown }).tool = function (
+    ...args: unknown[]
+  ) {
+    if (typeof args[0] === 'string') names.add(args[0]);
+    return (original as (...a: unknown[]) => unknown)(...args);
+  };
+  return names;
+}
+
+export function registerSyncedTools(
+  server: McpServer,
+  client: AuthenticatedClient | null,
+  handWritten: ReadonlySet<string> = new Set(),
+): void {
   const tools: ManifestTool[] = manifest.tools;
 
   for (const tool of tools) {
     const route = tool.route;
     if (!route) continue;
+    // A hand-written implementation of the same tool wins. It is exercised
+    // against the real API; this layer's route is derived.
+    if (handWritten.has(tool.name)) continue;
 
     server.tool(
       tool.name,

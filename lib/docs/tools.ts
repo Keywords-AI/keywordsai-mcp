@@ -4,7 +4,7 @@ import { fetchDocEntries, searchDocs } from './search.js';
 
 export function registerDocTools(server: McpServer): void {
   server.tool(
-    'search_docs',
+    'docs_search',
     'Search Respan documentation. Returns a list of relevant documentation pages based on your query. Use this to find guides, integration docs, API references, and more.',
     {
       query: z.string().describe('Search query — describe what you want to learn about (e.g. "openai tracing", "evaluators", "langchain integration")'),

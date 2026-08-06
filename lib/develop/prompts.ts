@@ -6,44 +6,31 @@ import { requireClient } from "../shared/client.js";
 export function registerPromptTools(server: McpServer, client: AuthenticatedClient | null) {
   // 1. List all Prompts
   server.tool(
-    "list_prompts",
-    `List all prompts in your Respan organization.
-
-Returns a paginated list of all prompts you have created in Respan.
-
-RESPONSE FIELDS (per prompt):
-- id: Unique prompt identifier (use this for other prompt operations)
-- name: Prompt name/title
-- description: Prompt description
-- created_at: Creation timestamp
-- updated_at: Last modification timestamp
-- is_active: Whether the prompt is active
-- version_count: Number of versions
-- current_version: Currently active version number
-- tags: Array of tags for organization
-
-Prompts are reusable templates that can have multiple versions.
-Use get_prompt_detail to see full prompt content, or list_prompt_versions to see all versions.`,
+    "prompt_list",
+    "List prompts for an organization (PAGINATED, default 5/page). Use for: browsing prompts, finding a prompt by name, or getting prompt_id values for other prompt tools. RETURNS per entry: prompt_id (string like 'prm_abc123'), name, description, tags, version (current draft version number), prompt_live_version_number (deployed version number, null if never deployed), is_read_only, model, message_count, system_preview. SCOPE: these fields describe where the prompt stands RIGHT NOW. This tool cannot answer anything about version history — how many versions exist, what an earlier version contained, or what changed between two. Use prompt_versions_list for history and prompt_version_get for a specific version's content. IMPORTANT: Always use prompt_id (string like 'prm_abc123') for all subsequent calls — never use the integer id.",
     {
-      page_size: z
-        .number()
+      name: z.string().optional().describe("Filter by prompt name (contains)"),
+      page: z.number().optional().describe("Page number (default: 1)"),
+      page_size: z.number().optional().describe("Page size (default: 5, max: 10)"),
+      sort_by: z
+        .enum(["-id", "current_version__updated_at"])
         .optional()
-        .describe("Number of prompts per page (1-50, default 25)"),
-      page: z
-        .number()
-        .optional()
-        .describe("Page number (default 1)"),
+        .describe("Sort field. Default: -id (newest first)."),
     },
-    async ({ page_size = 25, page = 1 }) => {
+    async ({ name, page_size = 5, page = 1, sort_by }) => {
       const c = requireClient(client);
       const data = await c.client.prompts.listPrompts({
         Authorization: c.auth,
-        page_size: Math.min(page_size, 50),
+        page_size: Math.min(page_size, 10),
         page,
+        // Name is a server-side filter, not a top-level field. Declaring it
+        // without this mapping would silently return unfiltered results.
+        ...(name ? { filters: { name: { operator: "icontains", value: [name] } } } : {}),
+        ...(sort_by ? { sort_by } : {}),
       });
 
       // Strip bloat from list response:
-      // 1. current_version.messages can contain base64 image data (use get_prompt_detail instead)
+      // 1. current_version.messages can contain base64 image data (use prompt_get instead)
       // 2. filters_data is backend filter metadata (~80KB) not useful for agents
       const cleaned = JSON.parse(JSON.stringify(data));
       delete cleaned.filters_data;
@@ -62,33 +49,10 @@ Use get_prompt_detail to see full prompt content, or list_prompt_versions to see
 
   // 2. Get single Prompt details
   server.tool(
-    "get_prompt_detail",
-    `Retrieve detailed information about a specific prompt.
-
-Returns complete prompt data including:
-- id: Unique prompt identifier
-- name: Prompt name/title
-- description: Prompt description
-- messages: The prompt template messages (array of role/content objects)
-- model: Default model for this prompt
-- temperature: Default temperature setting
-- max_tokens: Default max tokens setting
-- created_at: Creation timestamp
-- updated_at: Last modification timestamp
-- is_active: Whether the prompt is active
-- current_version: Currently active version
-- version_count: Total number of versions
-- tags: Array of tags
-- metadata: Custom metadata object
-
-The messages field contains the actual prompt template which may include:
-- System messages with instructions
-- User message templates with {{variables}}
-- Assistant message examples
-
-Use list_prompts first to find the prompt_id.`,
+    "prompt_get",
+    "Get full details of a prompt by its prompt_id (e.g., 'prm_abc123'). Use after prompt_list to see all versions and activity history. RETURNS: everything from prompt_list plus prompt_versions (array of all versions with their messages, model, settings, readonly status, created_at).",
     {
-      prompt_id: z.string().describe("Unique prompt identifier (from list_prompts)"),
+      prompt_id: z.string().describe("Prompt ID (e.g., 'prm_abc123')"),
     },
     async ({ prompt_id }) => {
       const c = requireClient(client);
@@ -101,34 +65,21 @@ Use list_prompts first to find the prompt_id.`,
 
   // 3. List versions of a specific Prompt
   server.tool(
-    "list_prompt_versions",
-    `List all versions of a specific prompt.
-
-Returns all versions of a prompt, allowing you to track changes over time.
-
-RESPONSE FIELDS (per version):
-- id: Version identifier
-- version: Version number (integer, starts at 1)
-- prompt_id: Parent prompt identifier
-- messages: The prompt template for this version
-- model: Model setting for this version
-- temperature: Temperature setting for this version
-- max_tokens: Max tokens setting for this version
-- created_at: When this version was created
-- is_active: Whether this is the active/deployed version
-- change_notes: Notes describing changes in this version
-- created_by: User who created this version
-
-Each prompt can have multiple versions. Typically one version is marked as active
-and used in production, while others are archived or in development.
-
-Use list_prompts first to find the prompt_id.`,
+    "prompt_versions_list",
+    "List all versions of a prompt (PAGINATED, default 10/page). Use to see version history and find which version to deploy. RETURNS per entry: version (int), description, model, readonly (bool — true=committed/deployable, false=draft), created_at, edited_by. prompt_deploy accepts both draft and committed versions (drafts are auto-committed before deployment).",
     {
-      prompt_id: z.string().describe("Unique prompt identifier (from list_prompts)"),
+      prompt_id: z.string().describe("Prompt ID"),
+      page: z.number().optional().describe("Page number (default: 1)"),
+      page_size: z.number().optional().describe("Page size (default: 10, max: 25)"),
     },
-    async ({ prompt_id }) => {
+    async ({ prompt_id, page, page_size }) => {
       const c = requireClient(client);
-      const data = await c.client.prompts.listPromptVersions({ Authorization: c.auth, prompt_id });
+      const data = await c.client.prompts.listPromptVersions({
+        Authorization: c.auth,
+        prompt_id,
+        ...(page !== undefined ? { page } : {}),
+        ...(page_size !== undefined ? { page_size } : {}),
+      });
       return {
         content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
       };
@@ -137,38 +88,11 @@ Use list_prompts first to find the prompt_id.`,
 
   // 4. Get details of a specific Prompt version
   server.tool(
-    "get_prompt_version_detail",
-    `Retrieve detailed information about a specific version of a prompt.
-
-Returns complete version data including:
-- id: Version identifier
-- version: Version number
-- prompt_id: Parent prompt identifier
-- messages: Full prompt template messages array
-  - Each message has: role (system/user/assistant), content (template text)
-  - Content may contain {{variable}} placeholders for dynamic values
-- model: Model setting for this version
-- temperature: Temperature setting (0.0-2.0)
-- max_tokens: Maximum tokens for completion
-- top_p: Top-p sampling parameter
-- frequency_penalty: Frequency penalty (0.0-2.0)
-- presence_penalty: Presence penalty (0.0-2.0)
-- stop: Stop sequences array
-- created_at: Creation timestamp
-- updated_at: Last update timestamp
-- is_active: Whether this version is active
-- change_notes: Description of changes
-- created_by: Creator information
-- metadata: Custom metadata
-
-Use list_prompts to find prompt_id, then list_prompt_versions to find the version number.`,
+    "prompt_version_get",
+    "Get full content of a specific prompt version by version number. Use to inspect the exact messages and settings of any version. RETURNS: version (int), messages (full conversation template), model, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, stream, variables, tools, tool_choice, response_format, fallback_models, load_balance_models, readonly (bool — true=committed, false=draft), edited_by, activities (version edit history).",
     {
-      prompt_id: z.string().describe("Unique prompt identifier (from list_prompts)"),
-      version: z
-        .number()
-        .describe(
-          "Version number (integer, e.g. 1, 2, 3 — from the 'version' field in list_prompt_versions)"
-        ),
+      prompt_id: z.string().describe("Prompt ID"),
+      version: z.number().describe("Version number"),
     },
     async ({ prompt_id, version }) => {
       const c = requireClient(client);
@@ -185,14 +109,11 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
 
   // 5. Create a new Prompt
   server.tool(
-    "create_prompt",
-    "Create a new prompt template. Only sets name and description. Use create_prompt_version to add content.",
+    "prompt_create",
+    "Create a new prompt (Step 1 of 2). Creates the prompt container with name/description only. To add content (messages, model settings), call prompt_commit as Step 2.",
     {
-      name: z.string().describe("Name for the new prompt template"),
-      description: z
-        .string()
-        .optional()
-        .describe("Optional description of the prompt's purpose"),
+      name: z.string().describe("Prompt name"),
+      description: z.string().optional().describe("Prompt description"),
     },
     async ({ name, description }) => {
       const c = requireClient(client);
@@ -209,15 +130,12 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
 
   // 6. Update Prompt metadata
   server.tool(
-    "update_prompt",
-    "Update a prompt's name and/or description.",
+    "prompt_update",
+    "Update a prompt's name or description. To update version content (messages, model, settings), use prompt_version_update instead.",
     {
-      prompt_id: z.string().describe("Unique prompt identifier (from list_prompts)"),
-      name: z.string().optional().describe("New name for the prompt"),
-      description: z
-        .string()
-        .optional()
-        .describe("New description for the prompt"),
+      prompt_id: z.string().describe("Prompt ID"),
+      name: z.string().optional().describe("New prompt name"),
+      description: z.string().optional().describe("New description"),
     },
     async ({ prompt_id, name, description }) => {
       const c = requireClient(client);
@@ -233,12 +151,13 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
     }
   );
 
-  // 7. Create a new Prompt version
+  // 7. Commit a new Prompt version
   server.tool(
-    "create_prompt_version",
-    "Create a new version of a prompt. The version is always created as NOT deployed.",
+    "prompt_commit",
+    "Commit a new version of a prompt. In Respan a new version is a commit, it snapshots the messages and model settings you supply as the next version number. The commit is never deployed automatically, it lands as a draft snapshot. Call prompt_deploy with the returned version number to make it live.",
     {
-      prompt_id: z.string().describe("Unique prompt identifier (from list_prompts)"),
+      prompt_id: z.string().describe("Prompt ID"),
+      description: z.string().optional().describe("Optional commit message/description"),
       messages: z
         .array(
           z.object({
@@ -271,13 +190,10 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
         .number()
         .optional()
         .describe("Presence penalty (0.0-2.0)"),
-      stop: z
-        .array(z.string().describe("A stop sequence string"))
-        .optional()
-        .describe("Array of stop sequences"),
     },
     async ({
       prompt_id,
+      description,
       messages,
       model,
       temperature,
@@ -285,7 +201,6 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
       top_p,
       frequency_penalty,
       presence_penalty,
-      stop,
     }) => {
       const c = requireClient(client);
       const data = await c.client.prompts.createPromptVersion({
@@ -293,6 +208,7 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
         prompt_id,
         messages,
         model,
+        ...(description !== undefined ? { description } : {}),
         ...(temperature !== undefined ? { temperature } : {}),
         ...(max_tokens !== undefined ? { max_tokens } : {}),
         ...(top_p !== undefined ? { top_p } : {}),
@@ -307,68 +223,99 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
 
   // 8. Update an existing Prompt version
   server.tool(
-    "update_prompt_version",
-    "Update an existing prompt version. Always keeps deploy: false.",
+    "prompt_version_update",
+    "Update the current draft version of a prompt. Use this to edit messages, model, temperature, or any generation settings on the draft before committing. Only draft versions (readonly=False) can be updated. To make it live: call prompt_deploy with the draft version number.",
     {
-      prompt_id: z.string().describe("Unique prompt identifier (from list_prompts)"),
-      version: z
-        .number()
-        .describe(
-          "Version number to update (integer, from list_prompt_versions)"
-        ),
+      prompt_id: z.string().describe("Prompt ID"),
+      version: z.number().describe("Version number of the draft to update"),
       messages: z
-        .array(
-          z.object({
-            role: z.string().describe("Message role (e.g. system, user, assistant)"),
-            content: z
-              .string()
-              .describe(
-                "Message content text, may include {{variable}} placeholders"
-              ),
-          })
-        )
+        .array(z.record(z.any()))
         .optional()
-        .describe("Updated array of message objects defining the prompt template"),
-      model: z
-        .string()
-        .optional()
-        .describe("Updated model identifier (e.g. gpt-4o)"),
-      temperature: z
-        .number()
-        .optional()
-        .describe("Updated sampling temperature (0.0-2.0)"),
-      max_tokens: z
-        .number()
-        .optional()
-        .describe("Updated maximum number of tokens for the completion"),
-      top_p: z
-        .number()
-        .optional()
-        .describe("Updated top-p (nucleus) sampling parameter"),
+        .describe(
+          'Array of message objects. Each message: {"role": "system"|"user"|"assistant", "content": [{"type": "text", "text": "the message text"}]}. Example: [{"role": "system", "content": [{"type": "text", "text": "You are a helpful assistant."}]}, {"role": "user", "content": [{"type": "text", "text": "{{user_input}}"}]}]'
+        ),
+      description: z.string().optional().describe("Version description"),
+      model: z.string().optional().describe("Model to use (e.g., 'gpt-4')"),
+      temperature: z.number().optional().describe("Temperature (0-2, default: 0.7)"),
+      max_tokens: z.number().optional().describe("Max tokens (default: 4096)"),
+      top_p: z.number().optional().describe("Top P (0-1, default: 1.0)"),
       frequency_penalty: z
         .number()
         .optional()
-        .describe("Updated frequency penalty (0.0-2.0)"),
+        .describe("Frequency penalty (-2 to 2, default: 0)"),
       presence_penalty: z
         .number()
         .optional()
-        .describe("Updated presence penalty (0.0-2.0)"),
-      stop: z
-        .array(z.string().describe("A stop sequence string"))
+        .describe("Presence penalty (-2 to 2, default: 0)"),
+      stream: z
+        .boolean()
         .optional()
-        .describe("Updated array of stop sequences"),
+        .describe("Enable streaming responses (default: false)"),
+      variables: z
+        .record(z.any())
+        .optional()
+        .describe(
+          "Template variables as key-value pairs. Keys match {{variable_name}} placeholders in messages."
+        ),
+      fallback_models: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Fallback model names if primary model fails (e.g., ['gpt-3.5-turbo'])."
+        ),
+      load_balance_models: z
+        .array(z.record(z.any()))
+        .optional()
+        .describe(
+          "Load balance config: [{model: 'gpt-4', weight: 0.8}, {model: 'gpt-3.5-turbo', weight: 0.2}]."
+        ),
+      tools: z
+        .array(z.record(z.any()))
+        .optional()
+        .describe("Tools array for function calling."),
+      tool_choice: z
+        .record(z.any())
+        .nullable()
+        .optional()
+        .describe("Tool choice configuration. Set to null to clear."),
+      response_format: z
+        .record(z.any())
+        .nullable()
+        .optional()
+        .describe("Response format configuration. Set to null to clear."),
+      reasoning_effort: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "Reasoning effort for reasoning models (e.g., 'low', 'medium', 'high'). Set to null to clear."
+        ),
+      seed: z
+        .number()
+        .nullable()
+        .optional()
+        .describe("Seed for reproducible outputs. Set to null to clear."),
     },
     async ({
       prompt_id,
       version,
       messages,
+      description,
       model,
       temperature,
       max_tokens,
       top_p,
       frequency_penalty,
       presence_penalty,
-      stop,
+      stream,
+      variables,
+      fallback_models,
+      load_balance_models,
+      tools,
+      tool_choice,
+      response_format,
+      reasoning_effort,
+      seed,
     }) => {
       const c = requireClient(client);
       const data = await c.client.prompts.updatePromptVersion({
@@ -377,12 +324,22 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
         version,
         deploy: false,
         ...(messages !== undefined ? { messages } : {}),
+        ...(description !== undefined ? { description } : {}),
         ...(model !== undefined ? { model } : {}),
         ...(temperature !== undefined ? { temperature } : {}),
         ...(max_tokens !== undefined ? { max_tokens } : {}),
         ...(top_p !== undefined ? { top_p } : {}),
         ...(frequency_penalty !== undefined ? { frequency_penalty } : {}),
         ...(presence_penalty !== undefined ? { presence_penalty } : {}),
+        ...(stream !== undefined ? { stream } : {}),
+        ...(variables !== undefined ? { variables } : {}),
+        ...(fallback_models !== undefined ? { fallback_models } : {}),
+        ...(load_balance_models !== undefined ? { load_balance_models } : {}),
+        ...(tools !== undefined ? { tools } : {}),
+        ...(tool_choice !== undefined ? { tool_choice } : {}),
+        ...(response_format !== undefined ? { response_format } : {}),
+        ...(reasoning_effort !== undefined ? { reasoning_effort } : {}),
+        ...(seed !== undefined ? { seed } : {}),
       });
       return {
         content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
@@ -390,16 +347,15 @@ Use list_prompts to find prompt_id, then list_prompt_versions to find the versio
     }
   );
 
+  // 9. Deploy a Prompt version
   server.tool(
-    "deploy_prompt_version",
-    `Deploy a specific prompt version, making it the active version that experiments (and other workflows) will use.
-
-Background: when you create a prompt version, it starts as a draft (not deployed). The platform requires at least one DEPLOYED version before a prompt can be referenced by version number in experiments or other workflows. If you call create_experiment with a prompt workflow and see "Prompt version X not found", you forgot to deploy.
-
-Tip: in the UI it's common to have multiple versions (draft + deployed). To switch the active version, just deploy the new one — the previous deployed version stays in history.`,
+    "prompt_deploy",
+    "Deploy a prompt version as the live version. If the version is still a draft, it will be auto-committed first. Just pass the version number you want to deploy — no need to call prompt_commit separately.",
     {
-      prompt_id: z.string().describe("Unique prompt identifier (from list_prompts)"),
-      version: z.number().describe("Version number to deploy as the active version"),
+      prompt_id: z.string().describe("Prompt ID"),
+      version: z
+        .number()
+        .describe("Version number to deploy (drafts will be auto-committed)"),
     },
     async ({ prompt_id, version }) => {
       const c = requireClient(client);

@@ -1,8 +1,8 @@
 /**
- * Evaluation Pipeline tools (V2 — Blockly visual editor compatible).
+ * Evaluator tools (V2 — Blockly visual editor compatible).
  *
- * Pipelines wrap one or more graders (single-step evaluators) in a workflow
- * of type "evaluators". This is what renders on the Evaluators page.
+ * An evaluator wraps one or more graders (the single-step building blocks) in a
+ * workflow of type "evaluators". This is what renders on the Evaluators page.
  *
  * High-level shapes supported:
  *   - Single grader:        steps=[{grader_id}]
@@ -170,7 +170,7 @@ async function buildPipelineTasks(
   for (const step of steps) {
     if (!step.grader_id) return { tasks: [], error: 'Each step must have a grader_id.' };
     const g = await fetchGrader(c, step.grader_id);
-    if (!g) return { tasks: [], error: `Grader ${step.grader_id} not found. Create and commit it first with create_evaluator + commit_evaluator.` };
+    if (!g) return { tasks: [], error: `Grader ${step.grader_id} not found. Create and commit it first with grader_create + grader_commit.` };
     graders[step.grader_id] = g;
   }
   if (condition?.check_grader_id && !graders[condition.check_grader_id]) {
@@ -274,44 +274,34 @@ export function registerEvaluationPipelineTools(
   client: AuthenticatedClient | null,
 ) {
   server.tool(
-    'create_evaluation_pipeline',
-    `Create an evaluator pipeline (V2 — Blockly visual editor compatible) that renders in the Evaluators page UI.
-
-Pipelines wrap committed graders into a workflow. Use this AFTER creating + committing a grader with create_evaluator + commit_evaluator.
-
-PATTERNS:
-- Single grader:       steps=[{grader_id: "abc"}]
-- Average:             steps=[{grader_id: "abc"}, {grader_id: "def"}], combine="average"
-- Weighted average:    steps=[...], combine="weighted_average", weights=[0.6, 0.4]
-- Condition gate:      steps=[{grader_id: "abc"}], condition={check_grader_id: "xyz", operator: "gt", value: 50, else_value: 0}
-
-IMPORTANT: Use this, NOT create_workflow, when wrapping graders into evaluators.`,
+    'evaluator_create',
+    "Create a V2 evaluator (renders in the Blockly visual editor). Takes grader IDs (from grader_create) and an optional combine method. Handles all Blockly metadata automatically — you only provide the semantic structure. ALWAYS use this (not grader_create) when creating an evaluator the user will see on the Evaluators page. Patterns: - Single grader: steps=[{grader_id: 'abc'}] - Average: steps=[{grader_id: 'abc'}, {grader_id: 'def'}], combine='average' - Weighted avg: steps=[...], combine='weighted_average', weights=[0.6, 0.4] - Condition gate: steps=[{grader_id: 'abc'}], condition={check_grader_id: 'xyz', operator: 'gt', value: 50, else_value: 0} steps[].grader_id wants a GRADER id — never an evaluator id. RETURNS: `id` (version PK — the id experiment_create.evaluator_workflow_ids and scores__<id> sort keys want) and `workflow_id` (family id).",
     {
-      name: z.string().describe('Pipeline name (displayed on the Evaluators page).'),
-      description: z.string().optional().describe('Pipeline description.'),
+      name: z.string().describe('Evaluator name (displayed on the Evaluators page)'),
+      description: z.string().optional().describe('Evaluator description'),
       steps: z
         .array(z.object({
-          grader_id: z.string().describe('ID of a committed grader.'),
+          grader_id: z.string().describe('ID of a grader created via grader_create + grader_commit — NOT an evaluator id'),
         }))
-        .describe('Graders in the pipeline.'),
+        .describe('Graders in the evaluator. Each item: {grader_id: string}'),
       combine: z
         .enum(['single', 'average', 'weighted_average'])
         .optional()
-        .describe('Combine method. Default: "single" (1 grader) or "average" (2+ graders).'),
+        .describe("How to combine multiple graders. Default: 'single' (1 grader) or 'average' (2+ graders)"),
       weights: z
         .array(z.number())
         .optional()
-        .describe('Weights for weighted_average. Must match steps count, e.g. [0.6, 0.4].'),
+        .describe('Weights for weighted_average. Must match steps count. E.g. [0.6, 0.4]'),
       condition: z
         .object({
-          check_grader_id: z.string().optional().describe('Grader ID to evaluate first (runs the grader, gates on its primary_score). Use this OR metric, not both.'),
+          check_grader_id: z.string().optional().describe('Grader ID to evaluate first (the condition input). Use this OR metric, not both.'),
           metric: z.string().optional().describe('Event metric path to gate on. Examples: "event.cost", "event.latency", "event.prompt_tokens", "event.completion_tokens", "event.total_tokens", "event.model". Use this OR check_grader_id, not both.'),
-          operator: z.enum(['gt', 'gte', 'lt', 'lte', 'eq']),
-          value: z.any().describe('Threshold value.'),
-          else_value: z.any().optional().describe('Constant value when condition false. Omit for If/Then (no output on failure).'),
+          operator: z.enum(['gt', 'gte', 'lt', 'lte', 'eq']).describe('Comparison operator'),
+          value: z.any().describe('Threshold value to compare against'),
+          else_value: z.any().optional().describe('Constant value to output when condition is false (e.g. 0 or false). Omit for If/Then mode (no output on failure).'),
         })
         .optional()
-        .describe('Optional condition gate before running the main graders. Gate on a grader output OR on an event metric.'),
+        .describe('Optional condition gate. Evaluates check_grader before running the main graders. Two modes: - If/Then/Else: provide else_value — outputs that constant when condition fails. - If/Then (no else): omit else_value — skips the main graders entirely when condition fails (no output).'),
     },
     async ({ name, description, steps, combine, weights, condition }) => {
       const c = requireClient(client);
@@ -333,13 +323,13 @@ IMPORTANT: Use this, NOT create_workflow, when wrapping graders into evaluators.
   );
 
   server.tool(
-    'list_evaluation_pipelines',
-    'List evaluator pipelines (V2). These are the items shown on the Evaluation Pipelines page in the UI.',
+    'evaluator_list',
+    "List the user-visible evaluators (V2). Returns all evaluators for the organization. This is the data shown on the Evaluators page. RETURNS per row: `id` (version PK — the id experiment_create.evaluator_workflow_ids and scores__<id> sort keys want) and `workflow_id` (family id). Graders (the building blocks) are listed by grader_list, not here. No row for a name the user called an evaluator does NOT mean it is absent: users say 'evaluator' for a bare grader too. Check grader_list for that name before reporting it missing, and test a grader with grader_run.",
     {
-      name: z.string().optional().describe('Filter by pipeline name (contains).'),
-      page: z.number().optional().describe('Page number (default: 1).'),
-      page_size: z.number().optional().describe('Page size (default: 10, max: 100).'),
-      sort_by: z.string().optional().describe('Sort field. Default: -created_at.'),
+      name: z.string().optional().describe('Filter by evaluator name (contains)'),
+      page: z.number().optional().describe('Page number (default: 1)'),
+      page_size: z.number().optional().describe('Page size (default: 10, max: 100)'),
+      sort_by: z.string().optional().describe('Sort field. Default: -created_at'),
     },
     async ({ name, page, page_size, sort_by }) => {
       const c = requireClient(client);
@@ -361,14 +351,14 @@ IMPORTANT: Use this, NOT create_workflow, when wrapping graders into evaluators.
   );
 
   server.tool(
-    'get_evaluation_pipeline',
-    'Get an evaluator pipeline by ID. Accepts both the family workflow_id and the version PK.',
+    'evaluator_get',
+    "Get an evaluator (V2) by ID. Returns a human-readable summary: which graders are used, how they're combined, and any conditions. Use grader_get for the single-step graders inside the evaluator.",
     {
-      pipeline_id: z.string().describe('Family workflow_id OR version PK id.'),
+      evaluator_id: z.string().describe('The evaluator to fetch: family workflow_id OR the version PK `id` (either is accepted; both are returned by evaluator_list/create).'),
     },
-    async ({ pipeline_id }) => {
+    async ({ evaluator_id }) => {
       const c = requireClient(client);
-      const data = await rawFetch(c, `/api/workflows/${pipeline_id}/`, { method: 'GET' });
+      const data = await rawFetch(c, `/api/workflows/${evaluator_id}/`, { method: 'GET' });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
       };
@@ -376,29 +366,30 @@ IMPORTANT: Use this, NOT create_workflow, when wrapping graders into evaluators.
   );
 
   server.tool(
-    'update_evaluation_pipeline',
-    `Update an evaluator pipeline. Provide the FULL updated structure (steps, combine, weights). Existing graders are replaced. Tasks are rebuilt automatically.`,
+    'evaluator_update',
+    "Update an existing evaluator. Replaces the evaluator's graders, combine method, weights, and/or conditions. Also supports updating name and description. Use THIS (never evaluator_create, never grader_update, never grader_create) to RENAME an evaluator or to ADD, REMOVE, RE-COMPOSE or SWAP the graders inside one. Pure rename: pass name only; graders/combine are kept. steps, when provided, REPLACES the full grader list — to add a grader, include the existing ones too. The evaluator's Blockly tasks are regenerated automatically.",
     {
-      pipeline_id: z.string().describe('Family workflow_id OR version PK id.'),
-      name: z.string().optional().describe('New name.'),
-      description: z.string().optional().describe('New description.'),
+      evaluator_id: z.string().describe('The evaluator to update: family workflow_id OR the version PK `id` (either is accepted; both are returned by evaluator_list/create).'),
+      name: z.string().optional().describe('New evaluator name (optional — omit to keep current)'),
+      description: z.string().optional().describe('New evaluator description (optional)'),
       steps: z
-        .array(z.object({ grader_id: z.string() }))
+        .array(z.object({ grader_id: z.string().describe('ID of a committed grader') }))
         .optional()
-        .describe('Updated graders. If provided, replaces all existing graders.'),
-      combine: z.enum(['single', 'average', 'weighted_average']).optional(),
-      weights: z.array(z.number()).optional(),
+        .describe('Updated graders. Each item: {grader_id: string}. If provided, replaces ALL existing graders.'),
+      combine: z.enum(['single', 'average', 'weighted_average']).optional().describe('How to combine multiple graders'),
+      weights: z.array(z.number()).optional().describe('Weights for weighted_average. Must match steps count.'),
       condition: z
         .object({
           check_grader_id: z.string().optional(),
           metric: z.string().optional(),
           operator: z.enum(['gt', 'gte', 'lt', 'lte', 'eq']),
           value: z.any(),
-          else_value: z.any().optional(),
+          else_value: z.any().optional().describe('Omit for If/Then mode (no output on failure).'),
         })
-        .optional(),
+        .optional()
+        .describe('Optional condition gate. Provide else_value for If/Then/Else; omit else_value for If/Then (no output on failure).'),
     },
-    async ({ pipeline_id, name, description, steps, combine, weights, condition }) => {
+    async ({ evaluator_id, name, description, steps, combine, weights, condition }) => {
       const c = requireClient(client);
       const body: Record<string, unknown> = {};
       if (name !== undefined) body.name = name;
@@ -411,7 +402,7 @@ IMPORTANT: Use this, NOT create_workflow, when wrapping graders into evaluators.
       if (Object.keys(body).length === 0) {
         throw new Error('No fields to update. Provide at least one of: name, description, steps.');
       }
-      const data = await rawFetch(c, `/api/workflows/${pipeline_id}/`, { method: 'PATCH', body });
+      const data = await rawFetch(c, `/api/workflows/${evaluator_id}/`, { method: 'PATCH', body });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
       };

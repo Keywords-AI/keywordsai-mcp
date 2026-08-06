@@ -105,58 +105,80 @@ Share this config with your team:
 
 ## Available Tools
 
-Tools come from two places.
+Tool names follow the Respan backend exactly: `noun_verb`, lowercase, with the
+resource first. `log_list`, `trace_get`, `prompt_create`, `monitor_deploy`. The
+resource leads because that is what you are usually searching for.
 
-**Synced tools** are generated from the Respan backend's own tool registry, so
-their names, descriptions and parameter schemas match the in-product agent
-exactly. They live in `lib/generated/manifest.json` and use the backend's
-`noun_verb` naming (`log_list`, `trace_get`, `prompt_create`). Regenerate them
-with `scripts/generate_manifest.py`; see [Syncing the tool surface](#syncing-the-tool-surface).
+Earlier releases used the opposite order (`list_logs`, `create_workflow`). Those
+names have been **replaced, not aliased** — see [Migrating from the old tool
+names](#migrating-from-the-old-tool-names).
 
-**Legacy tools** are the original hand-written set below, using `verb_noun`
-naming (`list_logs`, `get_trace_tree`). They are unchanged and still supported.
-Where a legacy tool and a synced tool cover the same endpoint, either works.
-The legacy set is expected to be retired once the sync reaches full coverage,
-which will be announced before it happens.
+### Workflow resources are typed
 
-Not every backend tool is exposed here. A tool is held back when its endpoint
-requires JWT authentication (an API key cannot call it), when its backend
-behaviour could not be verified mechanically, or when it is known to fail under
-API-key auth. Each held-back tool carries a machine-readable `excluded` reason
-in the manifest.
+There is no generic workflow tool. Each kind of workflow gets its own set:
 
-### Logs
+| Resource | What it does |
+| --- | --- |
+| `monitor_*` | Watches incoming telemetry and alerts when a condition trips |
+| `automation_*` | Runs a task sequence against incoming telemetry (online eval) |
+| `report_*` | Scheduled digest assembled from logs, traces and pulses |
+| `evaluator_*` | Grading pipeline composed of one or more graders |
+| `grader_*` | The individual graders an evaluator is built from |
 
-| Tool | Description |
-|------|-------------|
-| `list_logs` | List and filter LLM request logs with powerful query capabilities |
-| `get_log_detail` | Retrieve complete details of a single log by unique ID |
-| `create_log` | Create a new log entry for any type of LLM request |
+Each carries the same lifecycle verbs where they apply: `_list`, `_get`,
+`_create`, `_update`, `_commit`, `_deploy`, `_undeploy`, `_version_list`,
+`_validate`.
 
-### Traces
+This split is deliberate. A single `create_workflow` taking a `type` argument
+reads as the obvious choice for "create a monitor", and the type then has to be
+guessed. `monitor_create` removes the guess, so the workflow kind is fixed by
+the tool you picked rather than by an argument you filled in.
 
-| Tool | Description |
-|------|-------------|
-| `list_traces` | List and filter traces with sorting and pagination |
-| `get_trace_tree` | Retrieve complete hierarchical span tree of a trace |
+Note the vocabulary: a **grader** is one scoring unit, an **evaluator** is a
+pipeline composed of graders. `grader_create` builds a scorer;
+`evaluator_create` assembles them.
 
-### Customers
+### Getting the current list
 
-| Tool | Description |
-|------|-------------|
-| `list_customers` | List customers with pagination and sorting |
-| `get_customer_detail` | Get customer details including budget usage |
+Tool definitions are generated, so this README is not the source of truth. Call
+`tools/list`, or read `lib/generated/manifest.json`, which carries every tool's
+name, description and parameter schema, plus a reason for each backend tool that
+is deliberately not exposed here.
 
-### Prompts
+Tools are held back when their endpoint requires interactive authentication (an
+API key cannot call it), when their behaviour could not be verified, or when
+they are known to fail under API-key auth.
 
-| Tool | Description |
-|------|-------------|
-| `list_prompts` | List all prompts in your organization |
-| `get_prompt_detail` | Get detailed prompt information |
-| `list_prompt_versions` | List all versions of a prompt |
-| `get_prompt_version_detail` | Get specific version details |
+## Migrating from the old tool names
 
----
+If you pinned specific tool names, rename them. There is no compatibility
+period, because leaving the old names registered would keep them competing with
+the new ones for the same request.
+
+| Old | New |
+| --- | --- |
+| `list_logs`, `get_log_detail`, `get_spans_summary` | `log_list`, `log_get`, `log_summary` |
+| `list_traces`, `get_trace_tree` | `trace_list`, `trace_get` |
+| `list_customers`, `get_customer_detail` | `customer_list`, `customer_get` |
+| `list_prompts`, `get_prompt_detail` | `prompt_list`, `prompt_get` |
+| `create_prompt_version` | `prompt_commit` |
+| `deploy_prompt_version` | `prompt_deploy` |
+| `list_experiments`, `get_experiment` | `experiment_list`, `experiment_get` |
+| `list_experiment_spans` | `experiment_logs_list` |
+| `list_datasets`, `get_dataset` | `dataset_list`, `dataset_get` |
+| `list_dataset_logs`, `summarize_dataset_logs` | `dataset_logs_list`, `dataset_logs_summary` |
+| `import_dataset_logs` | `dataset_logs_import` |
+| `retrieve_dataset_log`, `replace_dataset_log` | `dataset_log_get`, `dataset_log_update` |
+| `remove_dataset_logs`, `list_dataset_eval_runs` | `dataset_logs_delete`, `dataset_eval_runs_list` |
+| `list_evaluators`, `create_evaluator` | `grader_list`, `grader_create` |
+| `test_evaluator`, `run_evaluator` | `grader_run` |
+| `create_evaluation_pipeline` | `evaluator_create` |
+| `search_docs` | `docs_search` |
+| `create_workflow`, `get_workflow`, `commit_workflow`, … | `monitor_*`, `automation_*`, `report_*`, `evaluator_*` |
+
+`scripts/verify-tool-naming.mjs` enforces the convention: it fails if any tool
+name contains "workflow", if a verb-first name reappears, or if names collide.
+
 
 ## Filter Syntax
 
@@ -180,19 +202,30 @@ Tools that support filtering accept a `filters` object:
 ```
 respan-mcp/
 ├── api/
-│   └── mcp.ts                # HTTP entry point (Vercel serverless function)
+│   ├── mcp.ts                # HTTP entry point (Vercel serverless function)
+│   ├── mcp/enterprise.ts     # Same handler, enterprise base URL
+│   └── mcp/docs.ts           # Unauthenticated documentation server
 ├── lib/
 │   ├── index.ts              # Stdio entry point (local mode)
 │   ├── shared/
-│   │   └── client.ts         # API client, auth config, path validation
-│   ├── observe/
-│   │   ├── logs.ts           # list_logs, get_log_detail, create_log
-│   │   ├── traces.ts         # list_traces, get_trace_tree
-│   │   └── users.ts          # list_customers, get_customer_detail
-│   └── develop/
-│       └── prompts.ts        # list_prompts, get_prompt_detail, versions
-├── vercel.json               # Vercel config (rewrites, function timeout)
-├── tsconfig.json             # TypeScript config
+│   │   ├── client.ts         # API client, auth, org scoping headers
+│   │   ├── sanitize.ts       # Credential masking for tool output
+│   │   └── mcp-handler.ts    # HTTP server factory, tool whitelist
+│   ├── generated/
+│   │   ├── manifest.json     # Generated tool surface (do not hand-edit)
+│   │   ├── register.ts       # Registers tools that have a verified route
+│   │   └── schema-to-zod.ts  # JSON Schema -> Zod for the manifest
+│   ├── observe/              # log_*, trace_*, customer_*
+│   ├── develop/              # prompt_*, experiment_*, and the typed
+│   │                         #   monitor_* / automation_* / report_* sets
+│   ├── evaluate/             # grader_*, evaluator_*, dataset_*
+│   └── docs/                 # docs_search
+├── scripts/
+│   ├── generate_manifest.py       # Regenerates the tool surface
+│   ├── verify-own-org-header.mjs  # Security check (org scoping)
+│   └── verify-tool-naming.mjs     # Naming convention check
+├── vercel.json
+├── tsconfig.json
 └── package.json
 ```
 

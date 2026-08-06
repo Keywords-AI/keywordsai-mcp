@@ -36,15 +36,19 @@ const send = o => p.stdin.write(JSON.stringify(o) + '\n');
 send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
 
 const call = (id, name, args) => send({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
-setTimeout(() => call(2, 'list_datasets', {}), 500);                        // SDK transport
-setTimeout(() => call(3, 'list_evaluation_pipelines', {}), 1100);           // rawFetch transport
+setTimeout(() => call(2, 'dataset_list', {}), 500);                        // SDK transport
+setTimeout(() => call(3, 'evaluator_list', {}), 1100);           // rawFetch transport
 setTimeout(() => call(4, 'annotation_queue_summary', {}), 1700);            // synced generated tool
 setTimeout(() => {
   p.kill(); srv.close();
   console.log('requests observed:', seen.length);
   for (const s of seen) console.log(`  scope=${s.scope ?? 'MISSING'} client=${s.client ?? 'MISSING'}  ${s.url}`);
   const missing = seen.filter(s => s.scope !== 'own-org' || s.client !== 'public-mcp');
-  const ok = missing.length === 0 && seen.length >= 3;
+  if (seen.length < 3) {
+    console.log(`FAIL: expected 3 upstream requests, saw ${seen.length}. A probed tool name probably no longer exists.`);
+    process.exit(1);
+  }
+  const ok = missing.length === 0;
   console.log(ok
     ? 'PASS: every transport sent the own-org scope and public-mcp client headers'
     : `FAIL: ${missing.length} request(s) missing a required header`);
