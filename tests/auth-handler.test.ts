@@ -56,23 +56,38 @@ describe('browser OAuth completion boundary', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it('returns only a callback URL and never backend JWTs to the browser', async () => {
+  it.each([
+    {
+      realm: 'platform' as const,
+      enterprise: false,
+      backendOrigin: 'https://api.respan.ai',
+    },
+    {
+      realm: 'enterprise' as const,
+      enterprise: true,
+      backendOrigin: 'https://endpoint.respan.ai',
+    },
+  ])('completes $realm login without exposing backend JWTs', async ({
+    realm,
+    enterprise,
+    backendOrigin,
+  }) => {
     const store = new InMemorySessionStore();
     setSessionStoreForTests(store);
     const config = getOAuthConfig();
     const broker = new OAuthBroker({ config, store });
     const started = await broker.startAuthorization({
-      realm: 'platform',
+      realm,
       clientId: 'enc_client',
       clientName: 'Browser test',
       redirectUri: 'http://127.0.0.1/callback',
       clientState: 'state',
       codeChallenge: 'x'.repeat(43),
-      resource: config.realms.platform.resource,
+      resource: config.realms[realm].resource,
     });
     const backendAccess = jwt('backend-access', 14_400);
     const backendRefresh = jwt('backend-refresh', 30 * 24 * 60 * 60);
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       access: backendAccess,
       refresh: backendRefresh,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
@@ -95,7 +110,7 @@ describe('browser OAuth completion boundary', () => {
         password: 'not-logged',
         oauth_transaction: started.transactionToken,
         oauth_csrf: started.browserCsrf,
-        enterprise: false,
+        enterprise,
         approve: true,
       },
     } as any, response as any);
@@ -107,6 +122,9 @@ describe('browser OAuth completion boundary', () => {
     expect(serialized).not.toContain(backendRefresh);
     expect(response.body.redirect_url).toContain('code=mcp_ac_');
     expect(response.body.redirect_url).toContain('state=state');
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      `${backendOrigin}/auth/jwt/create/`,
+    );
   });
 
   it('rejects OAuth completion without the bound browser cookie', async () => {

@@ -232,11 +232,15 @@ MCP_REDIS_KEY_PREFIX=respan-mcp:local:
 MCP_PUBLIC_BASE_URL=http://127.0.0.1:3100
 MCP_ACCESS_TOKEN_TTL_SECONDS=60
 RESPAN_API_BASE_URL=http://127.0.0.1:8000/api
+RESPAN_ENTERPRISE_API_BASE_URL=http://127.0.0.1:8000/api
 
 # Used only by the complete local verification probe:
 OAUTH_TEST_EMAIL=<local-test-account-email>
 OAUTH_TEST_PASSWORD=<local-test-account-password>
+# Required by the platform probe's API-key compatibility check.
 OAUTH_TEST_API_KEY=<local-test-api-key>
+# Optional; defaults to platform. Also accepts enterprise.
+OAUTH_TEST_REALM=platform
 ```
 
 To exercise the same Upstash REST adapter used by Vercel, replace the local
@@ -251,11 +255,24 @@ UPSTASH_REDIS_REST_TOKEN=<upstash-rest-token>
 Keep the local key prefix distinct from Preview and Production. The probe
 always replaces it with a unique per-run prefix and deletes only those keys.
 
-Run the local service and the probe:
+For manual browser testing, run the local service:
 
 ```bash
 npm run dev:oauth
+```
+
+The automated verification command launches its own isolated broker harness,
+so run it without a separate `dev:oauth` process:
+
+```bash
 npm run verify:oauth:local
+```
+
+To exercise the same lifecycle through the enterprise resource and backend,
+run:
+
+```bash
+OAUTH_TEST_REALM=enterprise npm run verify:oauth:local
 ```
 
 To verify that refresh rotation does not extend an absolute refresh-session

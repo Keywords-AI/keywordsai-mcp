@@ -84,27 +84,30 @@ function jwt(marker: string): string {
   return `${header}.${payload}.signature`;
 }
 
-async function issuePair(store: InMemorySessionStore) {
+async function issuePair(
+  store: InMemorySessionStore,
+  realm: 'platform' | 'enterprise' = 'platform',
+) {
   const config = loadOAuthConfig(process.env);
   const broker = new OAuthBroker({ config, store });
   const verifier = 'v'.repeat(64);
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   const started = await broker.startAuthorization({
-    realm: 'platform',
+    realm,
     clientId: 'enc_client',
     clientName: 'Handler test',
     redirectUri: 'http://127.0.0.1/callback',
     clientState: 'state',
     codeChallenge: challenge,
-    resource: config.realms.platform.resource,
+    resource: config.realms[realm].resource,
   });
   await broker.approveAuthorization(
-    'platform',
+    realm,
     started.transactionToken,
     started.browserCsrf,
   );
   const redirect = await broker.completeAuthorization({
-    realm: 'platform',
+    realm,
     transactionToken: started.transactionToken,
     browserCsrf: started.browserCsrf,
     backendAccessJwt: jwt('backend-access'),
@@ -308,6 +311,45 @@ describe('MCP authentication boundary', () => {
     expect(outbound).toMatch(/^Bearer eyJ/);
     expect(outbound).not.toContain(pair.access_token);
     expect(String(response.body)).not.toContain('eyJ');
+  });
+
+  it('uses an enterprise session only on the enterprise MCP backend', async () => {
+    const store = new InMemorySessionStore();
+    setSessionStoreForTests(store);
+    const { pair } = await issuePair(store, 'enterprise');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ results: [], count: 0 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const enterpriseHandler = createMcpHandler(
+      'https://endpoint.respan.ai',
+      '/.well-known/oauth-protected-resource/enterprise',
+      'enterprise',
+    );
+    const enterpriseResponse = new MockResponse();
+    await enterpriseHandler(request(pair.access_token, 'tools/call', {
+      name: 'list_customers',
+      arguments: { page_size: 1, page: 1 },
+    }), enterpriseResponse as any);
+
+    expect(enterpriseResponse.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(
+      /^https:\/\/endpoint\.respan\.ai\/api\/users\/list\//,
+    );
+    const outboundHeaders = new Headers(fetchMock.mock.calls[0][1]?.headers);
+    expect(outboundHeaders.get('authorization')).toMatch(/^Bearer eyJ/);
+    expect(outboundHeaders.get('authorization')).not.toContain(pair.access_token);
+
+    const platformHandler = createMcpHandler(
+      'https://api.respan.ai',
+      '/.well-known/oauth-protected-resource',
+      'platform',
+    );
+    const platformResponse = new MockResponse();
+    await platformHandler(request(pair.access_token), platformResponse as any);
+    expect(platformResponse.statusCode).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('deletes only access and returns top-level 401 on backend rejection', async () => {
