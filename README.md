@@ -279,9 +279,12 @@ port. Google login requires separately configured local backend credentials;
 the deterministic automated suite covers the broker behavior without them.
 
 Hosted OAuth client registrations accept HTTPS callbacks and HTTP callbacks
-bound to the literal loopback addresses `127.0.0.1` or `[::1]`. Other HTTP
-hosts, executable URL schemes, credentials, fragments, duplicate callbacks,
-and oversized callback lists are rejected.
+bound to loopback — the literal addresses `127.0.0.1` and `[::1]`, or the
+hostname `localhost`, which is what Claude Code and the MCP Inspector register.
+The hostname match is exact, so `localhost.attacker.example` and
+`sub.localhost` are not loopback. Other HTTP hosts, executable URL schemes,
+credentials, fragments, duplicate callbacks, and oversized callback lists are
+rejected.
 
 Vercel deployments require Upstash rather than the in-memory store. Production
 public and backend URLs must use HTTPS, and OAuth secrets and Redis credentials
