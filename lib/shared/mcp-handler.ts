@@ -12,6 +12,7 @@ import { registerEvaluatorTools } from '../evaluate/evaluators.js';
 import { registerDatasetTools } from '../evaluate/datasets.js';
 import { registerEvaluationPipelineTools } from '../evaluate/pipelines.js';
 import { registerWorkflowTools } from '../develop/workflows.js';
+import { registerOrganizationTools } from '../account/organizations.js';
 import { OAuthBroker, type ResolvedAccess } from '../oauth/broker.js';
 import { getOAuthConfig, type OAuthRealm } from '../oauth/config.js';
 import { InvalidAccessTokenError } from '../oauth/errors.js';
@@ -48,6 +49,7 @@ function createServer(
   registerDatasetTools(server, client);
   registerEvaluationPipelineTools(server, client);
   registerWorkflowTools(server, client);
+  registerOrganizationTools(server, client);
   return server;
 }
 
