@@ -57,7 +57,7 @@
     {
       "source": "/login",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'sha256-+H18jD33hl8NWOgpaXqRD8ZcN3vufeZXCLMPPKJevYI='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'sha256-Ccs6f8zCGgPjYKTgZcG3fRas8aOTOlHTqaAdiUZR9Hw='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" },
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "DENY" },
@@ -68,7 +68,7 @@
     {
       "source": "/login.html",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'sha256-+H18jD33hl8NWOgpaXqRD8ZcN3vufeZXCLMPPKJevYI='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'sha256-Ccs6f8zCGgPjYKTgZcG3fRas8aOTOlHTqaAdiUZR9Hw='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" },
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "DENY" },
