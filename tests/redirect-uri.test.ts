@@ -11,6 +11,7 @@ describe('OAuth redirect URI validation', () => {
     'https://client.example:8443/oauth/callback?source=mcp',
     'http://127.0.0.1:3199/callback',
     'http://[::1]:3199/callback',
+    'http://localhost:3199/callback',
   ])('allows secure or loopback callback %s', (value) => {
     expect(isAllowedOAuthRedirectUri(value)).toBe(true);
   });
@@ -20,7 +21,9 @@ describe('OAuth redirect URI validation', () => {
     'data:text/html,<script>alert(1)</script>',
     'file:///tmp/oauth-code',
     'http://attacker.example/callback',
-    'http://localhost:3199/callback',
+    'http://localhost.attacker.example/callback',
+    'http://sub.localhost:3199/callback',
+    'http://127.0.0.1.attacker.example/callback',
     'https://user:password@client.example/callback',
     'https://client.example/callback#fragment',
     '/relative/callback',
