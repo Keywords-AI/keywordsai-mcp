@@ -105,6 +105,19 @@ Share this config with your team:
 
 ## Available Tools
 
+### Organizations
+
+| Tool | Description |
+|------|-------------|
+| `list_organizations` | List the organizations your account can act as, and which one is active |
+| `switch_organization` | Switch the active organization by name, `organization_id`, or `team_id` |
+
+Every other tool reads and writes the **active** organization only. Switching is
+account-wide and persistent — it moves the Respan web app and any other session
+to the same organization, because the backend stores the active organization on
+the user record rather than on the token. Requires an OAuth login; an API key is
+already bound to one organization and cannot switch.
+
 ### Logs
 
 | Tool | Description |
@@ -169,6 +182,8 @@ respan-mcp/
 │   │   ├── logs.ts           # list_logs, get_log_detail, create_log
 │   │   ├── traces.ts         # list_traces, get_trace_tree
 │   │   └── users.ts          # list_customers, get_customer_detail
+│   ├── account/
+│   │   └── organizations.ts  # list_organizations, switch_organization
 │   └── develop/
 │       └── prompts.ts        # list_prompts, get_prompt_detail, versions
 ├── vercel.json               # Vercel config (rewrites, function timeout)
