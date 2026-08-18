@@ -620,13 +620,19 @@
             statusEl.style.display = 'none';
         }
 
+        // Mirror of `LOOPBACK_HOSTS` in lib/oauth/redirect-uri.ts, which is the
+        // source of truth. This page is served statically from public/, so it
+        // cannot import the module — tests/login-page-redirect-parity.test.ts
+        // fails if the two lists drift apart.
+        const LOOPBACK_HOSTS = ['127.0.0.1', '[::1]', 'localhost'];
+
         function isAllowedOAuthRedirect(target) {
             try {
                 const parsed = new URL(target);
                 if (parsed.hash || parsed.username || parsed.password) return false;
                 if (parsed.protocol === 'https:' && parsed.hostname) return true;
                 return parsed.protocol === 'http:'
-                    && (parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]');
+                    && LOOPBACK_HOSTS.includes(parsed.hostname);
             } catch {
                 return false;
             }
