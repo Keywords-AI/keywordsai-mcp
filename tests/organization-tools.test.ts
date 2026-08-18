@@ -164,6 +164,22 @@ describe('organization tools', () => {
     expect(JSON.parse(patch![1]!.body as string)).toEqual({ team: 11 });
   });
 
+  it('translates a rejected switch (e.g. a still-pending invite) into a clear message', async () => {
+    // /auth/teams/ does not expose pending state, so the row looks switchable;
+    // the switch PATCH is what rejects it (OrganizationUserRole get pending=False).
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/teams/') && init?.method === 'PATCH') {
+        return jsonResponse({ detail: 'Not found.' }, 404);
+      }
+      return url.endsWith('/auth/teams/')
+        ? jsonResponse([ACME, GLOBEX])
+        : jsonResponse({ unique_organization_id: 'org-globex' });
+    }));
+    const payload = await callTool('switch_organization', { organization: 'Acme' });
+    expect(payload.switched).toBeUndefined();
+    expect(payload.error).toMatch(/invitation may still be pending/);
+  });
+
   it('reports a selection problem as a message, not a thrown tool error', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => (
       url.endsWith('/auth/teams/')
@@ -174,11 +190,12 @@ describe('organization tools', () => {
     expect(payload.error).toMatch(/No organization matches "Nope"/);
   });
 
-  it('explains that API-key sessions cannot switch', async () => {
+  it('explains that a 401 session cannot switch (API key or expired OAuth)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ detail: 'no' }, 401)));
     const listed = await callTool('list_organizations');
-    expect(listed.error).toMatch(/only available when signed in through OAuth/);
+    expect(listed.error).toMatch(/requires an OAuth session/);
+    expect(listed.error).toMatch(/API key|re-authorized/);
     const switched = await callTool('switch_organization', { organization: 'Acme' });
-    expect(switched.error).toMatch(/only available when signed in through OAuth/);
+    expect(switched.error).toMatch(/requires an OAuth session/);
   });
 });
