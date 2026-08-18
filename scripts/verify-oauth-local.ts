@@ -8,6 +8,32 @@ loadEnv({ path: '.env.local' });
 
 const baseUrl = 'http://127.0.0.1:3100';
 const callbackUrl = 'http://127.0.0.1:3199/callback';
+type OAuthRealm = 'platform' | 'enterprise';
+
+function oauthRealm(value: string | undefined): OAuthRealm {
+  if (!value || value === 'platform') return 'platform';
+  if (value === 'enterprise') return 'enterprise';
+  throw new Error('OAUTH_TEST_REALM must be "platform" or "enterprise"');
+}
+
+const realm = oauthRealm(process.env.OAUTH_TEST_REALM);
+const isEnterprise = realm === 'enterprise';
+const mcpPath = isEnterprise ? '/mcp/enterprise' : '/mcp';
+const protectedResourcePath = isEnterprise
+  ? '/.well-known/oauth-protected-resource/enterprise'
+  : '/.well-known/oauth-protected-resource';
+const authorizationServerPath = isEnterprise
+  ? '/enterprise-oauth/.well-known/oauth-authorization-server'
+  : '/.well-known/oauth-authorization-server';
+const oppositeMcpPath = isEnterprise ? '/mcp' : '/mcp/enterprise';
+const resource = `${baseUrl}${mcpPath}`;
+const platformBackendBaseUrl = process.env.RESPAN_API_BASE_URL
+  || 'http://127.0.0.1:8000/api';
+const enterpriseBackendBaseUrl = process.env.RESPAN_ENTERPRISE_API_BASE_URL
+  || 'http://127.0.0.1:8000/api';
+const backendBaseUrl = isEnterprise
+  ? enterpriseBackendBaseUrl
+  : platformBackendBaseUrl;
 const email = process.env.OAUTH_TEST_EMAIL;
 const password = process.env.OAUTH_TEST_PASSWORD;
 const apiKey = process.env.OAUTH_TEST_API_KEY;
@@ -62,7 +88,7 @@ async function mcpRequest(
   method: string,
   params: JsonObject,
   id: number,
-  path = '/mcp',
+  path = mcpPath,
 ): Promise<{ response: Response; body: JsonObject }> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
@@ -85,7 +111,7 @@ async function waitForServer(child: ChildProcess): Promise<void> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (child.exitCode !== null) throw new Error('Local OAuth server exited during startup');
     try {
-      const response = await fetch(`${baseUrl}/.well-known/oauth-protected-resource`);
+      const response = await fetch(`${baseUrl}${protectedResourcePath}`);
       if (response.ok) return;
     } catch {
       // Startup is still in progress.
@@ -153,7 +179,7 @@ async function createRedisInspector(): Promise<RedisInspector> {
 async function run(): Promise<void> {
   required(email, 'OAUTH_TEST_EMAIL');
   required(password, 'OAUTH_TEST_PASSWORD');
-  required(apiKey, 'OAUTH_TEST_API_KEY');
+  if (!isEnterprise) required(apiKey, 'OAUTH_TEST_API_KEY');
   if (
     verifyRefreshExpiry
     && (!Number.isInteger(refreshSessionTtlSeconds) || refreshSessionTtlSeconds < 60)
@@ -163,11 +189,11 @@ async function run(): Promise<void> {
     );
   }
 
-  await step('local backend reachable', async () => {
+  await step(`${realm} backend reachable`, async () => {
     const response = await fetch(
-      `${(process.env.RESPAN_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/api\/?$/, '')}/`,
+      `${backendBaseUrl.replace(/\/api\/?$/, '')}/`,
     );
-    assert(response.status < 500, 'Local backend is unavailable');
+    assert(response.status < 500, `${realm} backend is unavailable`);
   });
 
   const redis = await createRedisInspector();
@@ -188,7 +214,8 @@ async function run(): Promise<void> {
         MCP_REDIS_KEY_PREFIX: keyPrefix,
         MCP_PUBLIC_BASE_URL: baseUrl,
         MCP_ACCESS_TOKEN_TTL_SECONDS: '60',
-        RESPAN_API_BASE_URL: process.env.RESPAN_API_BASE_URL || 'http://127.0.0.1:8000/api',
+        RESPAN_API_BASE_URL: platformBackendBaseUrl,
+        RESPAN_ENTERPRISE_API_BASE_URL: enterpriseBackendBaseUrl,
       },
       stdio: ['ignore', 'ignore', 'ignore'],
     },
@@ -199,11 +226,11 @@ async function run(): Promise<void> {
 
     const metadata = await step('OAuth metadata discovery', async () => {
       const protectedResource = await json(await fetch(
-        `${baseUrl}/.well-known/oauth-protected-resource`,
+        `${baseUrl}${protectedResourcePath}`,
       ));
-      assert(protectedResource.resource === `${baseUrl}/mcp`, 'Unexpected resource metadata');
+      assert(protectedResource.resource === resource, 'Unexpected resource metadata');
       const authorizationServer = await json(await fetch(
-        `${baseUrl}/.well-known/oauth-authorization-server`,
+        `${baseUrl}${authorizationServerPath}`,
       ));
       assert(
         authorizationServer.grant_types_supported.includes('refresh_token'),
@@ -238,7 +265,7 @@ async function run(): Promise<void> {
         state: clientState,
         code_challenge: challenge,
         code_challenge_method: 'S256',
-        resource: `${baseUrl}/mcp`,
+        resource,
       }).toString();
       const response = await fetch(authorize, { redirect: 'manual' });
       assert(response.status === 302, 'Authorization did not redirect to login');
@@ -251,6 +278,10 @@ async function run(): Promise<void> {
     const csrfCookie = authorization.csrfCookie;
     const transactionId = required(loginLocation.searchParams.get('transaction_id') || undefined, 'transaction_id');
     const csrf = required(loginLocation.searchParams.get('csrf') || undefined, 'csrf');
+    assert(
+      loginLocation.searchParams.get('enterprise') === (isEnterprise ? 'true' : null),
+      'Login redirect did not preserve the OAuth realm',
+    );
 
     await step('client confirmation content', async () => {
       const loginHtml = await (await fetch(loginLocation)).text();
@@ -259,6 +290,7 @@ async function run(): Promise<void> {
         `${baseUrl}/oauth/code?${new URLSearchParams({
           transaction_id: transactionId,
           csrf,
+          ...(isEnterprise ? { enterprise: 'true' } : {}),
         })}`,
         { headers: { Cookie: csrfCookie } },
       ));
@@ -280,7 +312,7 @@ async function run(): Promise<void> {
           oauth_transaction: transactionId,
           oauth_csrf: csrf,
           approve: true,
-          enterprise: false,
+          enterprise: isEnterprise,
         }),
       });
       const responseBody = await json(response);
@@ -300,7 +332,7 @@ async function run(): Promise<void> {
       code_verifier: verifier,
       client_id: registration.client_id,
       redirect_uri: callbackUrl,
-      resource: `${baseUrl}/mcp`,
+      resource,
     });
     const pair = await step('one-use authorization code exchange', async () => {
       const response = await fetch(metadata.token_endpoint, {
@@ -378,7 +410,7 @@ async function run(): Promise<void> {
           grant_type: 'refresh_token',
           refresh_token: pair.refresh_token,
           client_id: registration.client_id,
-          resource: `${baseUrl}/mcp`,
+          resource,
         }),
       });
       const responseBody = await json(response);
@@ -411,27 +443,29 @@ async function run(): Promise<void> {
       assert(stillValid.response.ok && stillValid.body.result, 'Newer access token was revoked by reuse');
     });
 
-    await step('platform token rejected by enterprise audience', async () => {
+    await step(`${realm} token rejected by opposite audience`, async () => {
       const response = await mcpRequest(
         rotated.access_token,
         'tools/list',
         {},
         7,
-        '/mcp/enterprise',
+        oppositeMcpPath,
       );
       assert(response.response.status === 401, 'Cross-audience token was accepted');
     });
 
-    await step('API key path performs zero Redis writes and calls a tool', async () => {
-      const before = (await redis.keys()).sort();
-      const result = await mcpRequest(apiKey!, 'tools/call', {
-        name: 'list_customers',
-        arguments: { page_size: 1, page: 1 },
-      }, 8);
-      assert(result.response.ok && result.body.result && !result.body.result.isError, 'API key tool call failed');
-      const after = (await redis.keys()).sort();
-      assert(JSON.stringify(after) === JSON.stringify(before), 'API key path changed Redis state');
-    });
+    if (!isEnterprise) {
+      await step('API key path performs zero Redis writes and calls a tool', async () => {
+        const before = (await redis.keys()).sort();
+        const result = await mcpRequest(apiKey!, 'tools/call', {
+          name: 'list_customers',
+          arguments: { page_size: 1, page: 1 },
+        }, 8);
+        assert(result.response.ok && result.body.result && !result.body.result.isError, 'API key tool call failed');
+        const after = (await redis.keys()).sort();
+        assert(JSON.stringify(after) === JSON.stringify(before), 'API key path changed Redis state');
+      });
+    }
 
     if (verifyRefreshExpiry) {
       await step('refresh expiry requires reauthorization', async () => {
@@ -446,7 +480,7 @@ async function run(): Promise<void> {
             grant_type: 'refresh_token',
             refresh_token: rotated.refresh_token,
             client_id: registration.client_id,
-            resource: `${baseUrl}/mcp`,
+            resource,
           }),
         });
         assert(refreshResponse.status === 400, 'Expired refresh token did not fail');

@@ -367,38 +367,47 @@ describe('OAuth broker lifecycle', () => {
     )).not.toBeNull();
   });
 
-  it('rotates both tokens, rejects reuse, and keeps the newer pair valid', async () => {
-    const now = Date.UTC(2026, 6, 28);
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(
-      JSON.stringify({ access: jwt(now + 4 * 60 * 60 * 1000, 'refreshed-access') }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    ));
-    const broker = new OAuthBroker({
-      config: config(),
-      store: new InMemorySessionStore('respan-mcp:test:', () => now),
-      now: () => now,
-      fetch: fetchMock,
-    });
-    const { pair } = await issuePair(broker, now);
-    const rotated = await broker.refresh({
-      refreshToken: pair.refresh_token,
-      clientId: 'enc_client',
-      resource: 'https://mcp.respan.ai/mcp',
-    });
+  it.each(['platform', 'enterprise'] as const)(
+    'rotates both tokens and preserves the %s realm',
+    async (realm) => {
+      const now = Date.UTC(2026, 6, 28);
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(
+        JSON.stringify({ access: jwt(now + 4 * 60 * 60 * 1000, 'refreshed-access') }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+      const brokerConfig = config();
+      const broker = new OAuthBroker({
+        config: brokerConfig,
+        store: new InMemorySessionStore('respan-mcp:test:', () => now),
+        now: () => now,
+        fetch: fetchMock,
+      });
+      const { pair } = await issuePair(broker, now, realm);
+      const rotated = await broker.refresh({
+        refreshToken: pair.refresh_token,
+        clientId: 'enc_client',
+        resource: brokerConfig.realms[realm].resource,
+      });
 
-    expect(rotated.access_token).not.toBe(pair.access_token);
-    expect(rotated.refresh_token).not.toBe(pair.refresh_token);
-    await expect(broker.refresh({
-      refreshToken: pair.refresh_token,
-      clientId: 'enc_client',
-    })).rejects.toMatchObject({ oauthError: 'invalid_grant' });
-    const resolved = await broker.resolveAccessToken(
-      'platform',
-      rotated.access_token,
-    );
-    expect(jwtMarker(resolved.backendAccessJwt)).toBe('refreshed-access');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
+      expect(rotated.access_token).not.toBe(pair.access_token);
+      expect(rotated.refresh_token).not.toBe(pair.refresh_token);
+      await expect(broker.refresh({
+        refreshToken: pair.refresh_token,
+        clientId: 'enc_client',
+      })).rejects.toMatchObject({ oauthError: 'invalid_grant' });
+      const resolved = await broker.resolveAccessToken(
+        realm,
+        rotated.access_token,
+      );
+      expect(jwtMarker(resolved.backendAccessJwt)).toBe('refreshed-access');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0][0])).toBe(
+        realm === 'enterprise'
+          ? 'https://endpoint.respan.ai/auth/jwt/refresh/'
+          : 'https://api.respan.ai/auth/jwt/refresh/',
+      );
+    },
+  );
 
   it('allows only one concurrent refresh to call the backend', async () => {
     const now = Date.UTC(2026, 6, 28);
