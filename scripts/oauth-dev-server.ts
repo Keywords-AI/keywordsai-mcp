@@ -21,7 +21,6 @@ const routeLoaders: Record<string, () => Promise<{ default: Handler }>> = {
   '/mcp': () => import('../api/mcp.js'),
   '/mcp/enterprise': () => import('../api/mcp/enterprise.js'),
   '/mcp/docs': () => import('../api/mcp/docs.js'),
-  '/docs/chat': () => import('../api/docs/chat.js'),
   '/.well-known/oauth-protected-resource/mcp': () => import('../api/well-known/oauth-protected-resource.js'),
   '/.well-known/oauth-protected-resource/mcp/enterprise': () => import('../api/well-known/oauth-protected-resource-enterprise.js'),
   '/.well-known/oauth-protected-resource/enterprise': () => import('../api/well-known/oauth-protected-resource-enterprise.js'),

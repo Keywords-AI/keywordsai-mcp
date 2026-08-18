@@ -258,8 +258,8 @@ Leave these unset:
 | `OAUTH_TEST_PASSWORD` | Test-process credential; never a hosted runtime variable. |
 | `OAUTH_TEST_API_KEY` | Test-process credential; never a hosted runtime variable. |
 
-Preserve `RESPAN_DOCS_API_KEY` if the existing `/mcp/docs` and `/docs/chat`
-features still require it. It is independent of the public OAuth broker.
+Preserve `RESPAN_DOCS_API_KEY` if the `/mcp/docs` feature still requires it.
+It is independent of the public OAuth broker.
 
 ### Generate secrets
 
