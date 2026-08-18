@@ -6,8 +6,6 @@
     { "source": "/mcp", "destination": "/api/mcp" },
     { "source": "/mcp/enterprise", "destination": "/api/mcp/enterprise" },
     { "source": "/mcp/docs", "destination": "/api/mcp/docs" },
-    { "source": "/docs/chat", "destination": "/api/docs/chat" },
-    { "source": "/docs", "destination": "/index.html" },
     { "source": "/auth", "destination": "/api/auth" },
     { "source": "/login", "destination": "/login.html" },
     { "source": "/.well-known/oauth-protected-resource/mcp", "destination": "/api/well-known/oauth-protected-resource" },
@@ -86,9 +84,6 @@
     },
     "api/mcp/docs.ts": {
       "maxDuration": 30
-    },
-    "api/docs/chat.ts": {
-      "maxDuration": 60
     },
     "api/auth.ts": {
       "maxDuration": 30
