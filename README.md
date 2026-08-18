@@ -60,8 +60,8 @@ Run the MCP server locally for personal development or offline use.
 **Prerequisites:** Node.js v18+
 
 ```bash
-git clone https://github.com/Keywords-AI/keywordsai-mcp.git
-cd keywordsai-mcp
+git clone https://github.com/respanai/respan-mcp.git
+cd respan-mcp
 npm install
 npm run build
 ```
@@ -86,7 +86,7 @@ npm run build
 
 Deploy your own instance to Vercel for teams sharing a single deployment.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Keywords-AI/keywordsai-mcp&env=RESPAN_API_KEY&envDescription=Your%20Respan%20API%20key&envLink=https://platform.respan.ai/platform/api/api-keys)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/respanai/respan-mcp&env=RESPAN_API_KEY&envDescription=Your%20Respan%20API%20key&envLink=https://platform.respan.ai/platform/api/api-keys)
 
 Set `RESPAN_API_KEY` in Vercel Dashboard > Settings > Environment Variables.
 
