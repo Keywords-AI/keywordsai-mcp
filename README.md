@@ -105,6 +105,18 @@ Share this config with your team:
 
 ## Available Tools
 
+### Server
+
+| Tool | Description |
+|------|-------------|
+| `server_info` | Deployed commit sha, branch, deploy/boot timestamps, tool count, tool schema fingerprint and backend targets |
+
+`server_info` takes no arguments and makes no backend calls. Use it from an
+agent session to check whether the live server has picked up a change: compare
+`commit_sha` with the tip of `main`, or `tool_schema_fingerprint` with the value
+from a fresh session. The same payload is served unauthenticated at
+[`GET /health`](#health-and-deploy-verification).
+
 ### Organizations
 
 | Tool | Description |
@@ -195,11 +207,15 @@ Tools that support filtering accept a `filters` object:
 ```
 respan-mcp/
 ├── api/
-│   └── mcp.ts                # HTTP entry point (Vercel serverless function)
+│   ├── mcp.ts                # HTTP entry point (Vercel serverless function)
+│   └── health.ts             # GET /health deployment identity probe
 ├── lib/
 │   ├── index.ts              # Stdio entry point (local mode)
 │   ├── shared/
-│   │   └── client.ts         # API client, auth config, path validation
+│   │   ├── client.ts         # API client, auth config, path validation
+│   │   ├── tools.ts          # Single tool registration list for every entry point
+│   │   ├── server-info.ts    # server_info tool, /health payload, schema fingerprint
+│   │   └── build-info.ts     # Build-time commit stamp (placeholders in git)
 │   ├── observe/
 │   │   ├── logs.ts           # list_logs, get_log_detail, create_log
 │   │   ├── traces.ts         # list_traces, get_trace_tree
@@ -216,9 +232,54 @@ respan-mcp/
 ### Architecture
 
 - **Two entry points:** `api/mcp.ts` (HTTP via Vercel) and `lib/index.ts` (stdio for local use)
+- **One tool registry:** both entry points build servers through `lib/shared/tools.ts`, so the hosted and stdio tool surfaces (and the `/health` schema fingerprint) cannot drift apart
 - **Shared core:** Both entry points create an `AuthConfig` and pass it to the same tool registration functions via closures - no global mutable state
 - **Tool modules:** Organized by domain (`observe/` for runtime data, `develop/` for prompt management)
 - **API client:** `lib/shared/client.ts` handles all upstream API calls with 30s timeout, path validation, and auth
+
+---
+
+## Health and Deploy Verification
+
+`GET https://mcp.respan.ai/health` needs no credentials and returns static
+deployment metadata (nothing from the request is echoed):
+
+```json
+{
+  "ok": true,
+  "service": "respan-mcp",
+  "version": "1.0.0",
+  "commit_sha": "8a6f5df4fa2d30c8f372e0c4a48e674d15bdff8b",
+  "branch": "main",
+  "deployed_at": "2026-09-06T23:01:49.992Z",
+  "started_at": "2026-09-06T23:01:49.992Z",
+  "tool_count": 68,
+  "tool_schema_fingerprint": "1d7a561769e5c007",
+  "backend_targets": {
+    "platform": "https://api.respan.ai/api",
+    "enterprise": "https://endpoint.respan.ai/api"
+  }
+}
+```
+
+- `commit_sha` / `branch` come from Vercel's `VERCEL_GIT_COMMIT_SHA` /
+  `VERCEL_GIT_COMMIT_REF` at runtime, falling back to the build-time stamp that
+  `scripts/stamp-build-info.mjs` writes into `lib/shared/build-info.ts` during
+  the Vercel build (the committed file holds `unknown` placeholders).
+- `deployed_at` is the build timestamp when stamped, otherwise the instance boot
+  time; `started_at` is always the boot time of the serving instance.
+- `tool_schema_fingerprint` is the first 16 hex chars of a SHA-256 over the
+  sorted, canonical-JSON list of every tool's name, description, input and
+  output schema as clients see them in `tools/list`. It ignores registration
+  order and the `respan-enabled-tools` header, so it changes only when the tool
+  surface changes.
+- `backend_targets` are the platform and enterprise base URLs this deployment
+  routes to, after `RESPAN_API_BASE_URL` / `RESPAN_ENTERPRISE_API_BASE_URL`.
+
+The `verify-production-deploy` GitHub Actions workflow runs when Vercel reports
+a successful Production deployment of `main` and polls `/health` for up to ten
+minutes until `commit_sha` equals the deployed commit, failing otherwise. It
+can also be dispatched by hand with an `expected_sha` input.
 
 ---
 

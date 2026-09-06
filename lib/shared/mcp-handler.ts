@@ -1,18 +1,8 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { RespanClient } from '@respan/respan-api';
 import type { AuthenticatedClient } from './client.js';
-import { registerLogTools } from '../observe/logs.js';
-import { registerTraceTools } from '../observe/traces.js';
-import { registerUserTools } from '../observe/users.js';
-import { registerPromptTools } from '../develop/prompts.js';
-import { registerExperimentTools } from '../develop/experiments.js';
-import { registerEvaluatorTools } from '../evaluate/evaluators.js';
-import { registerDatasetTools } from '../evaluate/datasets.js';
-import { registerEvaluationPipelineTools } from '../evaluate/pipelines.js';
-import { registerWorkflowTools } from '../develop/workflows.js';
-import { registerOrganizationTools } from '../account/organizations.js';
+import { createToolServer } from './tools.js';
 import { OAuthBroker, type ResolvedAccess } from '../oauth/broker.js';
 import { getOAuthConfig, type OAuthRealm } from '../oauth/config.js';
 import { InvalidAccessTokenError } from '../oauth/errors.js';
@@ -22,36 +12,6 @@ import {
   DisallowedBackendUrlError,
   resolveAllowedBackendUrl,
 } from './backend-url.js';
-
-function createServer(
-  client: AuthenticatedClient | null,
-  enabledTools?: Set<string>,
-): McpServer {
-  const server = new McpServer({
-    name: 'respan',
-    version: '1.0.0',
-  });
-
-  if (enabledTools?.size) {
-    const originalTool = server.tool.bind(server);
-    (server as any).tool = function (name: string) {
-      if (!enabledTools.has(name)) return;
-      return originalTool.apply(server, arguments as any);
-    };
-  }
-
-  registerLogTools(server, client);
-  registerTraceTools(server, client);
-  registerUserTools(server, client);
-  registerPromptTools(server, client);
-  registerExperimentTools(server, client);
-  registerEvaluatorTools(server, client);
-  registerDatasetTools(server, client);
-  registerEvaluationPipelineTools(server, client);
-  registerWorkflowTools(server, client);
-  registerOrganizationTools(server, client);
-  return server;
-}
 
 function bearerCredential(req: VercelRequest): string | undefined {
   const authHeader = req.headers.authorization;
@@ -209,7 +169,7 @@ export function createMcpHandler(
         ? new Set(enabledToolsHeader.split(',').map((tool) => tool.trim()).filter(Boolean))
         : undefined;
 
-      const server = createServer(authenticatedClient, enabledTools);
+      const server = createToolServer(authenticatedClient, enabledTools);
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });

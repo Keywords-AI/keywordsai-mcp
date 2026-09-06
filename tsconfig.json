@@ -16,6 +16,7 @@
   "include": [
     "lib/**/*",
     "api/auth.ts",
+    "api/health.ts",
     "api/oauth/**/*",
     "api/mcp.ts",
     "api/mcp/enterprise.ts",
