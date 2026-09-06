@@ -13,7 +13,7 @@ import {
   registerTraceTools,
   traceFilterSchema,
 } from '../lib/observe/traces.js';
-import { UnsupportedFilterFieldError } from '../lib/shared/filter-fields.js';
+import { VALIDATION_ERROR_CODE } from '../lib/shared/filter-fields.js';
 import type { AuthenticatedClient } from '../lib/shared/client.js';
 
 type ToolHandler = (args: any) => Promise<any>;
@@ -119,19 +119,34 @@ describe('list_traces description and schema', () => {
 });
 
 describe('list_traces handler guard', () => {
-  it('rejects an unsupported field before calling the backend', async () => {
+  it('rejects an unsupported field with a typed validation_error before calling the backend', async () => {
     const { client, listTraces } = fakeClient();
     const { list_traces } = captureTools(client);
-    await expect(
-      list_traces.handler({
-        filters: [{ field: 'metadata__tenant', operator: '', value: ['acme'] }],
-      }),
-    ).rejects.toBeInstanceOf(UnsupportedFilterFieldError);
-    await expect(
-      list_traces.handler({
-        filters: [{ field: 'total_tokens', operator: 'gt', value: [100] }],
-      }),
-    ).rejects.toThrow(/Supported fields: .*total_request_tokens/);
+
+    const metadataResult = await list_traces.handler({
+      filters: [{ field: 'metadata__tenant', operator: '', value: ['acme'] }],
+    });
+    expect(metadataResult.isError).toBe(true);
+    const metadataError = JSON.parse(metadataResult.content[0].text);
+    expect(metadataError).toMatchObject({
+      status: 'error',
+      error: {
+        code: VALIDATION_ERROR_CODE,
+        unsupported_fields: ['metadata__tenant'],
+        supported_fields: [...TRACE_FILTER_FIELDS].sort(),
+      },
+    });
+    expect(metadataError.error.message).toMatch(/not filterable on traces/);
+    expect(metadataError.error.message).toMatch(/list_logs/);
+
+    const tokensResult = await list_traces.handler({
+      filters: [{ field: 'total_tokens', operator: 'gt', value: [100] }],
+    });
+    expect(tokensResult.isError).toBe(true);
+    expect(JSON.parse(tokensResult.content[0].text).error.message).toMatch(
+      /Use 'total_request_tokens'/,
+    );
+
     expect(listTraces).not.toHaveBeenCalled();
   });
 

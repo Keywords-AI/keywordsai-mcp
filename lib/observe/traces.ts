@@ -3,7 +3,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AuthenticatedClient } from "../shared/client.js";
 import { requireClient } from "../shared/client.js";
-import { toBackendFilters, type FilterFieldSpec } from "../shared/filter-fields.js";
+import {
+  filterGuardError,
+  guardErrorResult,
+  toBackendFilters,
+  type FilterFieldSpec,
+} from "../shared/filter-fields.js";
 
 // ---------------------------------------------------------------------------
 // Closed set of filter fields the traces list endpoint honours.
@@ -84,6 +89,19 @@ export const TRACE_FILTER_FIELDS = [
 export const TRACE_FILTER_FIELD_SPEC: FilterFieldSpec = {
   tool: "list_traces",
   fields: TRACE_FILTER_FIELDS,
+  hint: (unsupported) => {
+    const hints: string[] = [];
+    if (unsupported.includes("total_tokens")) {
+      hints.push("Use 'total_request_tokens' to filter on total token count ('total_tokens' is a sort field only).");
+    }
+    if (unsupported.some((f) => f.startsWith("metadata__") || f === "metadata")) {
+      hints.push(
+        "Custom metadata is not filterable on traces (the traces table has no Map columns); "
+          + "use list_logs with a 'metadata__<key>' filter and group by trace_unique_id instead.",
+      );
+    }
+    return hints.length > 0 ? hints.join(" ") : undefined;
+  },
 };
 
 /**
@@ -238,9 +256,13 @@ export function registerTraceTools(server: McpServer, client: AuthenticatedClien
       const c = requireClient(client);
       const limit = Math.min(page_size, 20);
 
-      // Convert filters array to the backend body format: { field: { operator, value } }.
-      // Rejects unsupported fields up front: the backend drops them silently.
-      const bodyFilters = toBackendFilters(filters, TRACE_FILTER_FIELD_SPEC);
+      // Reject unsupported fields up front: the backend drops them silently
+      // and returns a wider result set with HTTP 200.
+      const guard = filterGuardError((filters ?? []).map((f) => f.field), TRACE_FILTER_FIELD_SPEC);
+      if (guard) return guardErrorResult(guard);
+
+      // Convert filters array to the backend body format: { field: { operator, value } }
+      const bodyFilters = toBackendFilters(filters);
 
       const result = await c.client.traces.listTraces({
         Authorization: c.auth,
