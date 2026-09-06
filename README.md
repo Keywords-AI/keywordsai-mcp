@@ -188,6 +188,8 @@ Tools that support filtering accept a `filters` object:
 
 **Operators:** `""` (equal), `not`, `lt`, `lte`, `gt`, `gte`, `contains`, `icontains`, `startswith`, `endswith`, `in`, `isnull`
 
+Each list tool documents the closed set of fields its backend endpoint honours; fields outside that set are rejected client-side with an error listing the supported fields (see `lib/shared/filter-fields.ts`), because the backend silently ignores unknown fields rather than returning an error. Dynamic `metadata__<key>` / `scores__<evaluator_id>` fields are supported by `list_logs` only; `list_traces` has no Map columns and cannot filter on custom metadata.
+
 ---
 
 ## Project Structure
