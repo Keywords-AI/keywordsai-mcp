@@ -1,5 +1,16 @@
-const PLATFORM_BACKEND = 'https://api.respan.ai/api';
-const ENTERPRISE_BACKEND = 'https://endpoint.respan.ai/api';
+export const PLATFORM_BACKEND = 'https://api.respan.ai/api';
+export const ENTERPRISE_BACKEND = 'https://endpoint.respan.ai/api';
+
+/**
+ * The backend base URLs this deployment routes to, after env overrides.
+ * Reported by `/health` and `server_info`; never derived from the request.
+ */
+export function backendTargets(): { platform: string; enterprise: string } {
+  return {
+    platform: process.env.RESPAN_API_BASE_URL || PLATFORM_BACKEND,
+    enterprise: process.env.RESPAN_ENTERPRISE_API_BASE_URL || ENTERPRISE_BACKEND,
+  };
+}
 
 export class DisallowedBackendUrlError extends Error {
   constructor() {

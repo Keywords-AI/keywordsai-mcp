@@ -1,0 +1,75 @@
+name: Verify production deploy
+
+# Vercel's GitHub integration posts a deployment status for every commit it
+# builds. When the Production deployment of a commit on main reports success,
+# poll https://mcp.respan.ai/health until it reports that exact commit, so a
+# merged fix is proven live rather than assumed. Fails if the alias has not
+# switched to the new commit within ~10 minutes.
+#
+# The check can also be run by hand against any sha via workflow_dispatch.
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Commit sha the live server should report (defaults to the checked-out sha)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-production-deploy-${{ github.event.deployment.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Live /health reports the deployed commit
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.deployment_status.state == 'success' &&
+        github.event.deployment.environment == 'Production' &&
+        github.event.deployment.ref == 'main'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HEALTH_URL: https://mcp.respan.ai/health
+      EXPECTED_SHA: ${{ inputs.expected_sha || github.event.deployment.sha || github.sha }}
+      DEADLINE_SECONDS: 600
+      POLL_SECONDS: 20
+    steps:
+      - name: Poll /health until commit_sha matches
+        run: |
+          set -u
+          echo "Expecting ${EXPECTED_SHA} at ${HEALTH_URL}"
+          start=$(date +%s)
+          attempt=0
+          while :; do
+            attempt=$((attempt + 1))
+            body=$(curl -sS --max-time 20 -H 'Cache-Control: no-cache' "${HEALTH_URL}" || true)
+            live=$(printf '%s' "${body}" | jq -r '.commit_sha // empty' 2>/dev/null || true)
+            if [ "${live}" = "${EXPECTED_SHA}" ]; then
+              echo "Live server is on ${live} after ${attempt} attempt(s)."
+              printf '%s' "${body}" | jq .
+              {
+                echo "## Production deploy verified"
+                echo
+                echo '```json'
+                printf '%s\n' "${body}" | jq .
+                echo '```'
+              } >> "${GITHUB_STEP_SUMMARY}"
+              exit 0
+            fi
+            elapsed=$(( $(date +%s) - start ))
+            echo "attempt ${attempt} (${elapsed}s): live commit_sha='${live:-<none>}'"
+            if [ "${elapsed}" -ge "${DEADLINE_SECONDS}" ]; then
+              echo "::error::${HEALTH_URL} still reports '${live:-<none>}' after ${elapsed}s; expected ${EXPECTED_SHA}"
+              printf '%s\n' "${body}"
+              exit 1
+            fi
+            sleep "${POLL_SECONDS}"
+          done

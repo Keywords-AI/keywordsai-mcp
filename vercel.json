@@ -1,8 +1,9 @@
 {
   "framework": null,
-  "buildCommand": "npm ci && npm run build",
+  "buildCommand": "npm ci && node scripts/stamp-build-info.mjs && npm run build",
   "outputDirectory": "dist/client",
   "rewrites": [
+    { "source": "/health", "destination": "/api/health" },
     { "source": "/mcp", "destination": "/api/mcp" },
     { "source": "/mcp/enterprise", "destination": "/api/mcp/enterprise" },
     { "source": "/mcp/docs", "destination": "/api/mcp/docs" },
@@ -84,6 +85,9 @@
     },
     "api/mcp/docs.ts": {
       "maxDuration": 30
+    },
+    "api/health.ts": {
+      "maxDuration": 10
     },
     "api/auth.ts": {
       "maxDuration": 30
