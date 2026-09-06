@@ -313,6 +313,34 @@ describe('MCP authentication boundary', () => {
     expect(String(response.body)).not.toContain('eyJ');
   });
 
+  it('rejects an unsupported list_logs filter key before any backend call', async () => {
+    const store = new InMemorySessionStore();
+    setSessionStoreForTests(store);
+    const { pair } = await issuePair(store);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ results: [], count: 0 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const handler = createMcpHandler(
+      'https://api.respan.ai',
+      '/.well-known/oauth-protected-resource',
+      'platform',
+    );
+    const response = new MockResponse();
+    await handler(request(pair.access_token, 'tools/call', {
+      name: 'list_logs',
+      arguments: {
+        filters: [{ field: 'error_message', operator: 'icontains', value: ['timeout'] }],
+      },
+    }), response as any);
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const body = String(response.body);
+    expect(body).toContain('validation_error');
+    expect(body).toContain('list_logs has no filter dimension for: error_message');
+    expect(body).toMatch(/\\"isError\\":true|"isError":true/);
+  });
+
   it('uses an enterprise session only on the enterprise MCP backend', async () => {
     const store = new InMemorySessionStore();
     setSessionStoreForTests(store);
